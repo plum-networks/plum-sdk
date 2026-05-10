@@ -1,0 +1,130 @@
+/*
+ * plum-sdk-mock.js — Plum SDK v0.1 의 개발용 stub.
+ *
+ * 사용법:
+ *   <script src="./plum-sdk-mock.js"></script>
+ *   <script>
+ *     const f = await window.plum.files.openPicker({ accept: '.docx' });
+ *   </script>
+ *
+ * 동작:
+ *   - openPicker        → 브라우저 native <input type=file> 다이얼로그
+ *   - saveAsPicker      → 가짜 핸들 발급 (writeBytes 시 실제 동작)
+ *   - readBytes         → 선택된 File 의 바이트
+ *   - writeBytes        → 브라우저 다운로드 트리거 (실제 plum-box 에 안 감)
+ *   - user.current      → dev user 고정값
+ *   - app.host          → mock host 고정값
+ *
+ * 운영 (실 plum-box) 전환:
+ *   <script src="/apps/runtime/plum-sdk.js"></script>
+ * 한 줄로 교체. window.plum API 가 동일해서 앱 코드는 그대로 동작.
+ */
+(function (window) {
+  'use strict';
+
+  const handles = new Map();
+  let nextId = 1;
+  const newHandle = (name) => ({ id: 'mock-' + nextId++, name });
+
+  window.plum = {
+    files: {
+      openPicker(opts = {}) {
+        return new Promise((resolve) => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          if (opts.accept) {
+            input.accept = Array.isArray(opts.accept)
+              ? opts.accept.join(',')
+              : opts.accept;
+          }
+          input.style.display = 'none';
+          input.onchange = () => {
+            const file = input.files && input.files[0];
+            if (!file) {
+              document.body.removeChild(input);
+              return resolve(null);
+            }
+            const h = newHandle(file.name);
+            handles.set(h.id, { kind: 'file', file });
+            document.body.removeChild(input);
+            resolve(h);
+          };
+          // 사용자가 다이얼로그를 cancel 하면 onchange 가 안 불려서
+          // 약간 비결정적. dev 용이니 큰 문제는 아님.
+          document.body.appendChild(input);
+          input.click();
+        });
+      },
+
+      async saveAsPicker(opts) {
+        if (!opts || !opts.defaultName) {
+          throw new Error('saveAsPicker: defaultName required');
+        }
+        const h = newHandle(opts.defaultName);
+        handles.set(h.id, { kind: 'new', name: opts.defaultName });
+        return h;
+      },
+
+      async readBytes(handle) {
+        const entry = handles.get(handle.id);
+        if (!entry) throw makeErr('FileNotFoundError', 'handle not found');
+        if (entry.kind === 'new') return new Uint8Array(0);
+        return new Uint8Array(await entry.file.arrayBuffer());
+      },
+
+      async writeBytes(handle, bytes) {
+        const entry = handles.get(handle.id);
+        if (!entry) throw makeErr('FileNotFoundError', 'handle not found');
+        const name = entry.kind === 'file' ? entry.file.name : entry.name;
+        const blob = new Blob([bytes], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      },
+
+      async stat(handle) {
+        const entry = handles.get(handle.id);
+        if (!entry) throw makeErr('FileNotFoundError', 'handle not found');
+        if (entry.kind === 'new') {
+          return { name: entry.name, size: 0, mtime: Date.now() };
+        }
+        return {
+          name: entry.file.name,
+          size: entry.file.size,
+          mtime: entry.file.lastModified,
+        };
+      },
+    },
+
+    user: {
+      async current() {
+        return {
+          id: 'mock-user',
+          username: 'devuser',
+          email: 'dev@example.com',
+          displayName: 'Dev User',
+        };
+      },
+    },
+
+    app: {
+      async host() {
+        return {
+          deviceName: 'Plum Box (mock)',
+          coreVersion: '0.0.0-mock',
+        };
+      },
+    },
+  };
+
+  function makeErr(code, msg) {
+    const e = new Error(msg);
+    e.code = code;
+    return e;
+  }
+})(window);
