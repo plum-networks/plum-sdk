@@ -120,6 +120,23 @@
         };
       },
     },
+
+    // mock 에는 실제 server .plu 백엔드가 없다 — surface 만 제공. fetch 는 명확히
+    // 거부하니, 서버 .plu 를 개발할 땐 자기 서비스를 띄우거나 이 메서드를 스텁할 것.
+    service: {
+      url(path) {
+        let p = String(path == null ? '/' : path);
+        if (p.charAt(0) !== '/') p = '/' + p;
+        return '/apps/mock/svc' + p;
+      },
+      async fetch(path) {
+        throw makeErr(
+          'mock_no_server',
+          'plum.service.fetch(' + JSON.stringify(path) +
+            '): mock 에는 server .plu 백엔드가 없습니다. 실제 서비스를 띄우거나 plum.service 를 스텁하세요.'
+        );
+      },
+    },
   };
 
   function makeErr(code, msg) {
