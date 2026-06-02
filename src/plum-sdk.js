@@ -54,6 +54,14 @@
     }
   }
 
+  // 현재 앱 id. prelude(`window.__PLUM_APP__`) 우선, 없으면 /apps/<id>/ 경로에서.
+  function appId() {
+    const ctx = window.__PLUM_APP__;
+    if (ctx && ctx.id) return String(ctx.id);
+    const m = String(window.location.pathname).match(/^\/apps\/([^/]+)\//);
+    return m ? m[1] : '';
+  }
+
   // --- 권한 체크 (prelude `window.__PLUM_APP__` 기준) ---
   function requirePerm(name) {
     const ctx = window.__PLUM_APP__;
@@ -554,5 +562,30 @@
     }
   };
 
-  window.plum = { files: files, user: user, app: app };
+  // --- plum.service (앱이 ship한 박스측 백엔드 = manifest.server) ---
+  // service.fetch(path, init) 는 앱의 web UI 가 자기 서버 .plu 를
+  // /apps/<id>/svc/<path> 로 호출. 박스 세션으로 인증되고, 검증된
+  // (userID, appID) 가 X-Plum-* 헤더로 백엔드에 주입됨(클라가 위조 불가).
+  // 원본 Response 를 그대로 반환 → .json()/.text()/.blob()/streaming 자유.
+  // 'service:call' 권한 필요.
+  const service = {
+    async fetch(path, init) {
+      requirePerm('service:call');
+      try {
+        return await fetch(service.url(path), Object.assign({ credentials: 'same-origin' }, init || {}));
+      } catch (e) {
+        throw new NetworkError('service fetch failed: ' + (e && e.message ? e.message : String(e)));
+      }
+    },
+    // url(path) → svc 절대경로. <img src>, EventSource, fetch streaming 등에.
+    url(path) {
+      const id = appId();
+      if (!id) throw new NetworkError('app id unknown (prelude missing)');
+      let p = String(path == null ? '/' : path);
+      if (p.charAt(0) !== '/') p = '/' + p;
+      return '/apps/' + encodeURIComponent(id) + '/svc' + p;
+    }
+  };
+
+  window.plum = { files: files, user: user, app: app, service: service };
 })(window);
