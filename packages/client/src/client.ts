@@ -197,7 +197,9 @@ export class AuthApi {
   /** Who does the current credential belong to? Also a cheap connectivity check. */
   async me(): Promise<{ id: string; username?: string; email?: string; displayName?: string }> {
     const res = await this.client.request("/api/auth/me");
-    return responseJSON(res);
+    // The box wraps the profile: {"user": {...}}
+    const body = responseJSON<{ user?: { id: string } } & { id?: string }>(res);
+    return (body.user ?? body) as { id: string; username?: string; email?: string; displayName?: string };
   }
 
   /** Discard the box-side session (call after minting a PAT). */

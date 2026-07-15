@@ -47,12 +47,13 @@ describe("login", () => {
           "set-cookie": "session=s3cr3t; Path=/; HttpOnly",
         });
       }
-      return textResponse(200, `{"id":"u1"}`);
+      return textResponse(200, `{"user":{"id":"u1","username":"ceo"}}`);
     });
     const client = new PlumClient({ baseUrl: "https://pb-x.plumbox.me", http: adapter });
     const result = await client.login({ login: "a@b.c", password: "pw" });
     expect(result.ok).toBe(true);
-    await client.auth.me();
+    const me = await client.auth.me();
+    expect(me.id).toBe("u1"); // unwraps the box's {"user":{...}} envelope
     expect(requests[1]?.headers?.["cookie"]).toBe("session=s3cr3t");
   });
 
