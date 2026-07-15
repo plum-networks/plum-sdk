@@ -13,11 +13,17 @@ export interface DiscoverResult {
 }
 
 /**
- * Resolve the Plum Box belonging to an account email.
+ * @deprecated Use `resolveBoxes(email, password)` from `@plumbox/oprf` instead.
  *
- * CACHE THE RESULT (e.g. in your app's settings): the endpoint is rate-limited
- * to ~10 requests/minute per source IP, and a box's subdomain is stable for
- * its lifetime. Re-discover only when a stored subdomain stops resolving.
+ * This resolves a box from an email alone via the relay's LEGACY `/api/lookup`.
+ * That endpoint is an existence oracle — anyone who guesses an email learns
+ * whether that person owns a box and its address — and it is being retired. The
+ * zero-knowledge path (`@plumbox/oprf`) requires the password too, so the relay
+ * never learns the email, the password, or which box. Prefer it for anything
+ * new; this remains only for boxes/relays that predate the routing directory.
+ *
+ * CACHE THE RESULT: the endpoint is rate-limited to ~10 requests/minute per
+ * source IP, and a box's subdomain is stable for its lifetime.
  */
 export async function discover(
   email: string,

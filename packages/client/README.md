@@ -9,10 +9,14 @@ Client SDK for **Plum Box**: log in once, auto-connect to the user's box through
 ## Quickstart
 
 ```ts
-import { discover, PlumClient } from "@plumbox/client";
+import { resolveBoxes } from "@plumbox/oprf";   // zero-knowledge discovery
+import { PlumClient } from "@plumbox/client";
 
-// 1) Find the user's box from their account email (cache the result!)
-const { baseUrl } = await discover("user@example.com");
+// 1) Find the user's box from (email, password) — the relay learns NOTHING:
+//    not the email, not the password, not which box. Cache the result.
+const [box] = await resolveBoxes("user@example.com", password);
+if (!box) throw new Error("no box for these credentials");
+const baseUrl = box.baseUrl;
 
 // 2) Log in once and mint a PAT
 const client = new PlumClient({ baseUrl });
@@ -47,7 +51,7 @@ const client = new PlumClient({ baseUrl, token, http: injectedAdapter(requestUrl
 
 | Area | Methods |
 |---|---|
-| Discovery | `discover(email)` → `{ subdomain, baseUrl }` (rate-limited — cache it) |
+| Discovery | **`resolveBoxes(email, password)`** from `@plumbox/oprf` (zero-knowledge; preferred). `discover(email)` here is the deprecated legacy lookup. |
 | Auth | `login`, `verifyTotp`, `auth.createToken/listTokens/revokeToken/me/logout`, `setToken/loadToken/clearToken` |
 | Drive | `list`, `listAll` (auto-pagination), `download`, `upload` (auto-chunked >8 MiB, `overwrite` option), `mkdir`, `ensureDir`, `rename`, `move`, `remove` (→ trash), `trash.list/restore/empty`, `versions.list/restore` |
 | Errors | `PlumApiError` (status/code), `PlumAuthError` (401/403 → `onAuthError` hook) |
