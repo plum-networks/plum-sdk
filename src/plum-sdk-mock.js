@@ -32,6 +32,7 @@
         return new Promise((resolve) => {
           const input = document.createElement('input');
           input.type = 'file';
+          if (opts.multiple) input.multiple = true;
           if (opts.accept) {
             input.accept = Array.isArray(opts.accept)
               ? opts.accept.join(',')
@@ -39,21 +40,36 @@
           }
           input.style.display = 'none';
           input.onchange = () => {
-            const file = input.files && input.files[0];
-            if (!file) {
-              document.body.removeChild(input);
-              return resolve(null);
-            }
-            const h = newHandle(file.name);
-            handles.set(h.id, { kind: 'file', file });
+            const picked = Array.from(input.files || []);
             document.body.removeChild(input);
-            resolve(h);
+            if (picked.length === 0) return resolve(null);
+            const toHandle = (file) => {
+              const h = newHandle(file.name);
+              handles.set(h.id, { kind: 'file', file });
+              return h;
+            };
+            resolve(opts.multiple ? picked.map(toHandle) : toHandle(picked[0]));
           };
           // 사용자가 다이얼로그를 cancel 하면 onchange 가 안 불려서
           // 약간 비결정적. dev 용이니 큰 문제는 아님.
           document.body.appendChild(input);
           input.click();
         });
+      },
+
+      // mock 은 Drive "Open with" 실행 컨텍스트가 없다 — 항상 null.
+      async launchFile() {
+        return null;
+      },
+
+      // dev 에선 objectURL 로 대체 — <video src> 등 실환경과 동일하게 동작.
+      url(handle) {
+        const entry = handles.get(handle && handle.id);
+        if (!entry || entry.kind !== 'file') {
+          throw makeErr('FileNotFoundError', 'url: handle not found');
+        }
+        if (!entry.objectUrl) entry.objectUrl = URL.createObjectURL(entry.file);
+        return entry.objectUrl;
       },
 
       async saveAsPicker(opts) {

@@ -6,7 +6,9 @@
  * 한 줄로 import 하면 window.plum 즉시 사용 가능.
  *
  * mock (plum-sdk-mock.js) 과 surface 동일. 차이:
- *   - openPicker      → 박스의 drive/photos 트리에서 고르는 모달
+ *   - openPicker      → 박스의 drive/photos 트리에서 고르는 모달 (multiple 지원)
+ *   - launchFile      → Drive "Open with" 실행 시 ?handle= 쿼리로 넘어온 파일
+ *   - url             → 핸들 스트리밍 URL (<video src> 등, Range 지원)
  *   - readBytes       → /api/apps/handle/<id>/read (박스가 실제 바이트 보냄)
  *   - writeBytes      → /api/apps/handle/<id>/write (박스 파일시스템에 저장)
  *   - user.current    → /api/auth/me (현재 로그인 사용자)
@@ -124,6 +126,12 @@
   border-bottom: 1px solid #f5f5f5;
 }
 .plum-picker-row:hover { background: #f9f9f9; }
+.plum-picker-row.plum-picker-selected { background: #eef2ff; }
+.plum-picker-row.plum-picker-selected:hover { background: #e2e8fd; }
+.plum-picker-footer-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 16px; border-top: 1px solid #eee;
+}
 .plum-picker-pathhint { padding: 8px 16px; font-size: 12px; color: #999; border-top: 1px solid #eee; }
 .plum-picker-empty, .plum-picker-loading { padding: 18px; color: #999; text-align: center; font-size: 14px; }
 .plum-picker-error { padding: 18px; color: #c33; text-align: center; font-size: 14px; }
@@ -217,7 +225,7 @@
     return [];
   }
 
-  function showOpenPicker(accept) {
+  function showOpenPicker(accept, multiple) {
     return new Promise(function (resolve, reject) {
       const filter = buildFilter(accept);
       const root = ensureRoot();
@@ -244,6 +252,51 @@
 
       const pathHint = el('div', { class: 'plum-picker-pathhint', text: '/' });
       card.appendChild(pathHint);
+
+      // openPicker({multiple:true}): rows toggle, footer Open confirms.
+      const selected = new Map(); // "kind:path" → descriptor
+      let openBtn = null;
+      if (multiple) {
+        const actions = el('div', { class: 'plum-picker-footer-actions' });
+        const cancelBtn = el('button', { text: 'Cancel', class: 'plum-picker-btn' });
+        openBtn = el('button', {
+          text: 'Open',
+          class: 'plum-picker-btn plum-picker-btn-primary'
+        });
+        openBtn.disabled = true;
+        cancelBtn.addEventListener('click', function () { hide(); resolve(null); });
+        openBtn.addEventListener('click', function () {
+          if (selected.size === 0) return;
+          const picked = Array.from(selected.values());
+          hide();
+          resolve(picked);
+        });
+        actions.appendChild(cancelBtn);
+        actions.appendChild(openBtn);
+        card.appendChild(actions);
+      }
+
+      function selKey(d) { return d.kind + ':' + d.path; }
+      function toggleSelect(row, desc) {
+        const key = selKey(desc);
+        if (selected.has(key)) {
+          selected.delete(key);
+          row.classList.remove('plum-picker-selected');
+        } else {
+          selected.set(key, desc);
+          row.classList.add('plum-picker-selected');
+        }
+        openBtn.disabled = selected.size === 0;
+        openBtn.textContent = selected.size > 0 ? 'Open (' + selected.size + ')' : 'Open';
+      }
+      function attachPick(row, desc) {
+        if (multiple) {
+          if (selected.has(selKey(desc))) row.classList.add('plum-picker-selected');
+          row.addEventListener('click', function () { toggleSelect(row, desc); });
+        } else {
+          row.addEventListener('click', function () { hide(); resolve(desc); });
+        }
+      }
 
       root.appendChild(card);
 
@@ -283,12 +336,9 @@
         files.forEach(function (f) {
           const row = el('div', { class: 'plum-picker-row plum-picker-file' });
           row.textContent = '📄 ' + f.name;
-          row.addEventListener('click', function () {
-            hide();
-            resolve({
-              kind: 'drive', path: f.path, name: f.name,
-              size: f.size, mtime: new Date(f.modTime).getTime()
-            });
+          attachPick(row, {
+            kind: 'drive', path: f.path, name: f.name,
+            size: f.size, mtime: new Date(f.modTime).getTime()
           });
           list.appendChild(row);
         });
@@ -308,13 +358,10 @@
         filtered.forEach(function (p) {
           const row = el('div', { class: 'plum-picker-row plum-picker-file' });
           row.textContent = '🖼 ' + p.name;
-          row.addEventListener('click', function () {
-            hide();
-            resolve({
-              kind: 'photo', path: p.relPath || p.name, name: p.name,
-              size: typeof p.size === 'number' ? p.size : 0,
-              mtime: typeof p.mtime === 'number' ? p.mtime : 0
-            });
+          attachPick(row, {
+            kind: 'photo', path: p.relPath || p.name, name: p.name,
+            size: typeof p.size === 'number' ? p.size : 0,
+            mtime: typeof p.mtime === 'number' ? p.mtime : 0
           });
           list.appendChild(row);
         });
@@ -418,23 +465,60 @@
   }
 
   // --- plum.files ---
+  async function grantPicked(picked) {
+    const r = await fetch('/api/apps/picker/grant', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: picked.kind, path: picked.path })
+    });
+    if (!r.ok) {
+      let body = null;
+      try { body = await r.json(); } catch (_) {}
+      throw errorFromResponse(r.status, body);
+    }
+    const grant = await r.json();
+    return { id: grant.id, name: grant.name };
+  }
+
   const files = {
     async openPicker(opts) {
-      const picked = await showOpenPicker(opts && opts.accept);
+      const multiple = !!(opts && opts.multiple);
+      const picked = await showOpenPicker(opts && opts.accept, multiple);
       if (!picked) return null;
-      const r = await fetch('/api/apps/picker/grant', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: picked.kind, path: picked.path })
-      });
-      if (!r.ok) {
-        let body = null;
-        try { body = await r.json(); } catch (_) {}
-        throw errorFromResponse(r.status, body);
+      if (!multiple) return grantPicked(picked);
+      const out = [];
+      for (let i = 0; i < picked.length; i++) {
+        out.push(await grantPicked(picked[i]));
       }
-      const grant = await r.json();
-      return { id: grant.id, name: grant.name };
+      return out;
+    },
+
+    // Drive "Open with"로 실행됐을 때 넘겨받은 파일. 쿼리스트링의
+    // handle 파라미터를 읽어 검증까지 마친 핸들을 돌려준다. 직접 실행이거나
+    // 핸들이 만료된 stale reload 면 null.
+    async launchFile() {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('handle');
+      if (!id) return null;
+      const handle = { id: id, name: params.get('name') || '' };
+      try {
+        const st = await files.stat(handle);
+        return { id: handle.id, name: st.name || handle.name };
+      } catch (e) {
+        if (e && e.code === 'FileNotFoundError') return null;
+        throw e;
+      }
+    },
+
+    // 핸들의 스트리밍 URL. <video src>/<img src>/부분 fetch(Range 지원)용.
+    // readBytes 와 같은 files:read 권한이 필요하다.
+    url(handle) {
+      requirePerm('files:read');
+      if (!handle || !handle.id) {
+        throw new FileNotFoundError('url: invalid handle');
+      }
+      return '/api/apps/handle/' + encodeURIComponent(handle.id) + '/read';
     },
 
     async saveAsPicker(opts) {
