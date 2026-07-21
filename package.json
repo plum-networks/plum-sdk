@@ -1,0 +1,11 @@
+{
+  "name": "plum-sdk",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm test --workspaces"
+  }
+}

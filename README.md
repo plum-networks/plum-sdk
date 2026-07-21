@@ -1,5 +1,14 @@
 # Plum SDK
 
+Two SDKs live here, for two very different app locations:
+
+| Package | Runs where | Use it for |
+|---|---|---|
+| [`packages/client`](packages/client) — **@plumbox/client** (npm) | OUTSIDE the box: Node/desktop apps, Obsidian plugins | Log in once → auto-connect to the user's box via Plum Relay → Drive API. No IP/port/tunneling. |
+| `src/plum-sdk.js` — on-box runtime | ON the box: `.plu` apps served by plum-box-core | Same-origin file pickers, user info, `plum.service` |
+
+## On-box runtime (`src/plum-sdk.js`)
+
 Browser-side JavaScript library that lets `.plu` apps talk to a host
 **Plum Box** (`plum-box-core`) — file open/save, current user info, host metadata.
 
