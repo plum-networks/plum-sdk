@@ -60,6 +60,8 @@ interface PlumSDK {
   files: PlumFiles;
   user: PlumUser;
   app: PlumApp;
+  /** 박스가 협업 릴레이를 제공할 때만 존재. 없으면 앱이 알아서 폴백할 것. */
+  collab?: PlumCollab;
 }
 
 interface PlumFiles {
@@ -118,6 +120,17 @@ interface PlumUser {
 interface PlumApp {
   /** 호스트 plum-box 의 디바이스 정보. 권한 불필요. */
   host(): Promise<{ deviceName: string; coreVersion: string }>;
+}
+
+interface PlumCollab {
+  /** 방에 참여. 이후 그 방의 메시지를 받는다. */
+  join(roomId: string): void;
+  /** 방에서 나감. 구독도 함께 정리된다. */
+  leave(roomId: string): void;
+  /** 방의 다른 참여자들에게 전달. 자기 자신에게는 오지 않는다. */
+  publish(roomId: string, message: unknown): void;
+  /** 구독. 반환값을 호출하면 구독 해제. */
+  subscribe(roomId: string, handler: (message: unknown) => void): () => void;
 }
 
 interface FileHandle {
@@ -201,6 +214,44 @@ videoEl.src = window.plum.files.url(f);   // 전체 다운로드 없이 재생·
 - `openPicker` / `saveAsPicker` / `launchFile` 이 반환한 핸들은 **현재 페이지 세션 동안** 유효.
 - 페이지 reload 후 같은 파일을 다시 다루려면 picker 를 다시 열어야 함 (v0.1 한정).
 - 핸들의 `id` 를 localStorage / sessionStorage 에 저장해서 재사용하지 말 것 (서버 측 만료될 수 있음).
+
+## plum.collab — 실시간 협업 (권한 불필요)
+
+같은 문서를 연 앱 인스턴스끼리 실시간으로 주고받는 통로. 앱은 자기 소켓을 열지
+않는다 — 방에 `join` 해서 `publish` / `subscribe` 하면 박스가 같은 방의 다른
+인스턴스로 그대로 전달한다. **박스는 내용을 해석하지도, 저장하지도 않는다.**
+무엇을 보낼지(문서 스냅샷, 커서, presence)는 전적으로 앱이 정한다.
+
+| API | 설명 |
+|---|---|
+| `plum.collab.join(room)` | 방 참여. 끊겨도 SDK 가 재접속하면서 자동으로 다시 참여한다. |
+| `plum.collab.leave(room)` | 방 나가기. |
+| `plum.collab.publish(room, msg)` | 같은 방의 **다른** 인스턴스에 전달(자기 echo 없음). |
+| `plum.collab.subscribe(room, fn)` | 구독. 반환된 함수를 호출하면 해제. |
+
+```js
+const room = 'name:' + fileName;
+window.plum.collab.join(room);
+const off = window.plum.collab.subscribe(room, (msg) => applyRemote(msg));
+window.plum.collab.publish(room, { t: 'doc', html: editor.getHTML() });
+```
+
+**있는지 먼저 확인할 것.** 구버전 박스에는 `collab` 이 없다:
+
+```js
+const collab = window.plum?.collab;
+if (collab) { /* 릴레이 사용 */ } else { /* 앱 나름의 폴백 */ }
+```
+
+### 방 이름과 보이는 범위 ⚠️
+
+방은 `(앱 id, 방 이름)` 으로 갈린다. 다른 앱의 방에는 절대 닿지 않는다.
+다만 **같은 박스의 구성원끼리는 방 이름이 공용 이름 공간**이다 — 그래야 다른
+사람과 같은 문서에서 만날 수 있기 때문이다. 아무나 보면 안 되는 것을 방에
+흘리지 말 것. 대신 참여자는 숨을 수 없다: 박스는 방의 참여자를 셸(앱 프레임
+위 신원 스트립)에 이름으로 표시하므로, 듣고만 있어도 상대에게 보인다.
+
+제한: 메시지 4 MB, 소켓당 방 16개. 히스토리는 없다(참여 이전 메시지는 못 받는다).
 
 ## plum.service — 앱 자체 백엔드 호출 (`service:call`)
 
