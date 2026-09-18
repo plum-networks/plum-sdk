@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://developer.plum.im/schemas/manifest-v1.json",
+  "title": "Plum Box app manifest (manifest.json)",
+  "description": "The rules plum-box-core (internal/apps/manifest.go) applies at install time. @plumbox/dev mirrors them in packages/cli/src/manifest.ts (a test keeps the two in step); the store's upload checks use this file directly.",
+  "type": "object",
+  "required": ["id", "name", "version"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$",
+      "description": "Reverse-domain style, owned by the publisher's namespace (e.g. dev.alice.notes). Never changes for the life of the app."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "version": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "entry": { "type": "string", "default": "index.html", "description": "Bundle-relative HTML the panel opens with." },
+    "icon": { "type": "string", "description": "Bundle-relative image." },
+    "description": { "type": "string" },
+    "mobile": { "type": "boolean", "default": false, "description": "Shown in the phone apps' launchpad." },
+    "mimeTypes": { "type": "array", "items": { "type": "string" }, "description": "Types this app can open from Drive." },
+    "permissions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["files:read", "files:write", "user:profile", "service:call"] }
+    },
+    "server": {
+      "type": "object",
+      "required": ["bin"],
+      "additionalProperties": false,
+      "properties": {
+        "bin": { "type": "string", "description": "Bundle-relative arm64 Linux ELF, started once per user under the app's own uid." },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "healthPath": { "type": "string", "default": "/healthz" },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "memory": { "type": "string", "pattern": "^\\s*[0-9]+\\s*([KkMmGg][Ii]?[Bb]?|[Bb])?\\s*$", "description": "e.g. 256M, 1G. Default 256M, cap 1G." },
+            "cpu": { "type": "integer", "minimum": 0, "maximum": 400, "description": "Percent of one core; 100 = one core. Default 50, cap 200." },
+            "pids": { "type": "integer", "minimum": 0, "maximum": 1024, "description": "Default 64, cap 256." }
+          }
+        }
+      }
+    }
+  }
+}

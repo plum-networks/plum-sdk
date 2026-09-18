@@ -5,6 +5,7 @@ Two SDKs live here, for two very different app locations:
 | Package | Runs where | Use it for |
 |---|---|---|
 | [`packages/client`](packages/client) — **@plumbox/client** (npm) | OUTSIDE the box: Node/desktop apps, Obsidian plugins | Log in once → auto-connect to the user's box via Plum Relay → Drive API. No IP/port/tunneling. |
+| [`packages/cli`](packages/cli) — **@plumbox/dev** (npm, `plum-dev`) | On the developer's laptop | Publisher key, pair with your own box, sign + push a `.plu` without the store, follow service logs, run a panel locally with the mock SDK. |
 | `src/plum-sdk.js` — on-box runtime | ON the box: `.plu` apps served by plum-box-core | Same-origin file pickers, user info, `plum.service` |
 
 ## On-box runtime (`src/plum-sdk.js`)

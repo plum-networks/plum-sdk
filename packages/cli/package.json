@@ -1,0 +1,31 @@
+{
+  "name": "@plumbox/dev",
+  "version": "0.1.0",
+  "description": "Developer CLI for Plum Box apps: create a publisher key, pair your own box, package and sign a .plu, push it, follow its logs, and run a panel locally.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/plum-networks/plum-sdk",
+    "directory": "packages/cli"
+  },
+  "type": "module",
+  "bin": {
+    "plum-dev": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/cli.ts --format esm --target node18 --clean && cp ../../src/plum-sdk-mock.js dist/plum-sdk-mock.js",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
