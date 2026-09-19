@@ -111,8 +111,9 @@ export function scaffold(dir: string, name: string, id: string, template: Templa
     written.push(rel);
   };
   const manifest: Record<string, unknown> = { id, name, version: '0.1.0', entry: 'index.html', description: `${name} for Plum Box`, mobile: true };
+  // Both templates greet the user (plum.user.current) — that needs user:profile.
   if (template === 'server-go') {
-    manifest.permissions = ['service:call'];
+    manifest.permissions = ['user:profile', 'service:call'];
     manifest.server = { bin: 'svc', healthPath: '/healthz', limits: { memory: '128M', cpu: 50, pids: 32 } };
   } else {
     manifest.permissions = ['user:profile'];

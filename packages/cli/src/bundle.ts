@@ -64,6 +64,7 @@ export function checkBundle(entries: ZipEntry[], allowHostArch = false): { manif
   }
   const { manifest, problems: mp } = validateManifest(manifestEntry.data, (rel) => names.has(rel));
   problems.push(...mp);
+  if (manifest) problems.push(...checkSdkUsage(manifest, files));
   if (manifest?.server?.bin && names.has(manifest.server.bin)) {
     const bin = files.find((e) => e.name === manifest.server!.bin)!;
     const p = checkElf(bin.data, allowHostArch);
@@ -137,4 +138,33 @@ export function verifyPlu(plu: Buffer): { ok: true; publisher: string; kid: stri
     if (createHash('sha256').update(files.get(p)!).digest('hex') !== want) return { ok: false, reason: `"${p}" does not match its listed hash` };
   }
   return { ok: true, publisher: formatPublicKey(pub), kid: kid(pub), files: files.size };
+}
+
+
+/**
+ * The SDK refuses calls whose permission the manifest does not declare, and the
+ * owner can only allow declared permissions — so an undeclared call is a
+ * runtime error every time. Warn when the app's own scripts use an SDK
+ * namespace the manifest does not cover.
+ */
+export function checkSdkUsage(manifest: Manifest, files: ZipEntry[]): Problem[] {
+  const declared = new Set(manifest.permissions ?? []);
+  const needs: Array<[RegExp, string, string]> = [
+    [/\bplum\.user\./, 'user:profile', 'plum.user.*'],
+    [/\bplum\.service\./, 'service:call', 'plum.service.*'],
+    [/\bplum\.files\.(openPicker|readBytes|list|stat)\b/, 'files:read', 'plum.files.openPicker/readBytes'],
+    [/\bplum\.files\.(saveAsPicker|writeBytes|create)\b/, 'files:write', 'plum.files.saveAsPicker/writeBytes'],
+  ];
+  const out: Problem[] = [];
+  const seen = new Set<string>();
+  for (const f of files) {
+    if (!/\.(html?|m?js)$/i.test(f.name) || f.data.length > 4 * 1024 * 1024) continue;
+    const text = f.data.toString('utf8');
+    for (const [re, perm, what] of needs) {
+      if (seen.has(perm) || declared.has(perm) || !re.test(text)) continue;
+      seen.add(perm);
+      out.push({ level: 'warning', message: `${f.name} calls ${what} but manifest.permissions lacks "${perm}" — the call will fail with PermissionDeniedError` });
+    }
+  }
+  return out;
 }

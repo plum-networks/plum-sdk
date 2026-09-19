@@ -156,3 +156,19 @@ describe('interop with the Go plu tool', () => {
     expect(v.ok && v.kid).toBe(kid(k.pub));
   });
 });
+
+describe('SDK usage vs declared permissions', () => {
+  it('warns when a page calls an SDK namespace the manifest does not declare', () => {
+    const m = { ...manifest, permissions: ['service:call'] };
+    const files = [
+      { name: 'manifest.json', data: Buffer.from(JSON.stringify(m)) },
+      { name: 'index.html', data: Buffer.from('<script>plum.user.current(); plum.service.fetch("/x"); plum.files.openPicker()</script>') },
+      { name: 'svc', data: elf(0xb7) },
+    ];
+    const { problems } = checkBundle(files);
+    const msgs = problems.filter((p) => p.level === 'warning').map((p) => p.message);
+    expect(msgs.some((x) => x.includes('"user:profile"'))).toBe(true);
+    expect(msgs.some((x) => x.includes('"files:read"'))).toBe(true);
+    expect(msgs.some((x) => x.includes('"service:call"'))).toBe(false);
+  });
+});
