@@ -43,6 +43,62 @@ export interface FileVersion {
 
 export type TokenScope = "read" | "write" | "admin";
 
+/**
+ * Scopes a registered companion app may ask the box owner for (OAuth). One
+ * vocabulary on every surface — the developer console's client registration,
+ * the box's consent screen and the token it mints:
+ *
+ * - `files:read`   read the user's files
+ * - `files:write`  change files (implies files:read)
+ * - `user:profile` read the signed-in user's profile only
+ * - `service:call:<app_id>` call that app's box-side service
+ *
+ * `read` / `write` are the older spellings and still work (`write` =
+ * files:read + files:write). `admin` is never delegated to an app.
+ */
+export type OAuthScope =
+  | "files:read"
+  | "files:write"
+  | "user:profile"
+  | `service:call:${string}`
+  | "read"
+  | "write";
+
+/** GET /api/apps/{id}/status — the app's box-side service, when it has one. */
+export interface AppServiceStatus {
+  state: string;
+  [key: string]: unknown;
+}
+
+/** One SKU of an app's entitlement view. */
+export interface SkuEntitlement {
+  sku: string;
+  kind: string;
+  /** RFC 3339, or "" when the entitlement never expires. */
+  expires_at: string;
+  active: boolean;
+}
+
+/** GET /api/apps/{id}/entitlement — the store receipts this box holds for the app. */
+export interface AppEntitlement {
+  skus: SkuEntitlement[];
+  /** When the box last refreshed its receipts from the store ("" = never). */
+  refreshed_at: string;
+  /** True when the box could not refresh for two days; apps decide how strict to be. */
+  stale: boolean;
+}
+
+/** Result of `client.apps.ensureServiceInstalled()`. */
+export type EnsureServiceResult =
+  | { installed: true; status: AppServiceStatus }
+  | {
+      installed: false;
+      /** Deep link that opens the Plum app on the store page for this app. */
+      installUrl: string;
+      /** The box's own web UI, for a device without the Plum app. */
+      webUrl: string;
+    };
+
 export interface TokenStorage {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
