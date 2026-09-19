@@ -172,3 +172,17 @@ describe('SDK usage vs declared permissions', () => {
     expect(msgs.some((x) => x.includes('"service:call"'))).toBe(false);
   });
 });
+
+describe('escrow', () => {
+  it('seals and opens a key file with a passphrase, and rejects a wrong one', async () => {
+    const { openEscrow, sealEscrow } = await import('../src/escrow.js');
+    const key = Buffer.from('plum-key-v1\n' + 'x'.repeat(86) + '\n');
+    const blob = sealEscrow(key, 'correct horse battery');
+    expect(blob.startsWith('v1.scrypt.')).toBe(true);
+    expect(sealEscrow(key, 'correct horse battery')).not.toBe(blob); // fresh salt/nonce
+    expect(openEscrow(blob, 'correct horse battery').equals(key)).toBe(true);
+    expect(() => openEscrow(blob, 'wrong')).toThrow(/passphrase/);
+    expect(() => openEscrow(blob.slice(0, -4) + 'AAAA', 'correct horse battery')).toThrow();
+    expect(() => sealEscrow(key, 'short')).toThrow(/8 characters/);
+  });
+});

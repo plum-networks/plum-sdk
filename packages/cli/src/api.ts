@@ -119,13 +119,44 @@ export interface PublishResult {
   rotated?: boolean;
 }
 
-/** Uploads a signed .plu to Plum Store with a publisher token (lands in review). */
-export async function publish(store: string, token: string, plu: Buffer, filename: string): Promise<PublishResult> {
+/** Uploads a signed .plu to Plum Store with a publisher token (public → review queue, beta → your testers). */
+export async function publish(store: string, token: string, plu: Buffer, filename: string, channel: 'public' | 'beta' = 'public'): Promise<PublishResult> {
   const form = new FormData();
   form.append('plu', new Blob([new Uint8Array(plu)], { type: 'application/octet-stream' }), filename);
+  form.append('channel', channel);
   const r = await fetch(new URL('/v1/publisher/versions', store), { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
   if (!r.ok) throw await readError(r);
   return (await r.json()) as PublishResult;
+}
+
+export interface Tester {
+  box_serial: string;
+  note?: string | null;
+  created_at?: string | null;
+}
+
+export async function testers(store: string, token: string, appId: string): Promise<Tester[]> {
+  const r = await fetch(new URL(`/v1/publisher/apps/${encodeURIComponent(appId)}/testers`, store), { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw await readError(r);
+  return (await r.json()) as Tester[];
+}
+
+export async function addTester(store: string, token: string, appId: string, serial: string, note?: string): Promise<Tester> {
+  const r = await fetch(new URL(`/v1/publisher/apps/${encodeURIComponent(appId)}/testers`, store), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ box_serial: serial, note: note ?? null }),
+  });
+  if (!r.ok) throw await readError(r);
+  return (await r.json()) as Tester;
+}
+
+export async function removeTester(store: string, token: string, appId: string, serial: string): Promise<void> {
+  const r = await fetch(new URL(`/v1/publisher/apps/${encodeURIComponent(appId)}/testers/${encodeURIComponent(serial)}`, store), {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw await readError(r);
 }
 
 export async function trust(c: Credentials) {

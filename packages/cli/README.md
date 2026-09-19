@@ -31,7 +31,9 @@ plum-dev push --logs                 # sign → install → follow the service l
 | `status`, `restart`, `uninstall <app-id>` | What they say. |
 | `serve [dir] [--port 4040] [--service URL]` | Runs a panel on your laptop: static files under `/apps/<id>/`, the mock SDK at `/apps/runtime/plum-sdk.js`, and `/apps/<id>/svc/*` proxied to `--service` with the same `X-Plum-*` identity headers the box injects. |
 | `rotate --app-id <id> (--old <key> \| --recovery <key> --old-pub <pub>)` | Writes a signed rotation record so boxes accept a new key for an app you already shipped. Include it with `package --rotation`. |
-| `publish [dir\|.plu] [--store URL] [--token plum_pub_…]` | Signs (like `package`) and uploads to Plum Store with a publisher token from developer.plum.im › CLI tokens (`login --publisher-token …` saves it; `PLUM_PUBLISHER_TOKEN` works too). The store verifies the signature against your registered key and queues the version for review. |
+| `publish [dir\|.plu] [--store URL] [--token plum_pub_…] [--channel beta]` | Signs (like `package`) and uploads to Plum Store with a publisher token from developer.plum.im › CLI tokens (`login --publisher-token …` saves it; `PLUM_PUBLISHER_TOKEN` works too). The store verifies the signature against your registered key and queues the version for review; `--channel beta` skips review and goes straight to your beta boxes. |
+| `testers <app-id> [list \| add <serial> \| rm <serial>]` | Which boxes receive the app's beta channel. |
+| `escrow seal [--recovery-key] [-o blob.txt]` / `escrow open <blob.txt>` | Encrypts the key file with a passphrase (scrypt + AES-256-GCM) for the console's escrow, and restores it. The store never sees the passphrase. |
 | `whoami` | Config dir, key, paired box. |
 
 `.plumignore` in the app directory lists paths to leave out of the bundle (one

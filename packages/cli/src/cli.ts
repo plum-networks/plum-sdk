@@ -14,7 +14,9 @@
 //   status|restart|uninstall <app-id>
 //   serve [dir] [--port 4040] [--service http://127.0.0.1:8080]
 //   rotate --app-id <id> (--old <key> | --recovery <key> --old-pub <ed25519:…>) [-o rotation.json]
-//   publish [dir|.plu] [--store URL] [--token plum_pub_…]   upload to Plum Store (review queue)
+//   publish [dir|.plu] [--store URL] [--token plum_pub_…] [--channel beta]   upload to Plum Store
+//   testers <app-id> [list|add <serial>|rm <serial>]      who gets the beta channel
+//   escrow (seal [-o file] | open <file>)                  passphrase-encrypted key backup for the console
 //   whoami
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -25,13 +27,14 @@ import * as api from './api.js';
 import { checkBundle, collectFiles, inspectPlu, resignPlu, signBundle, verifyPlu, type SignOptions } from './bundle.js';
 import { configDir, keyPath, loadCredentials, requireCredentials, saveCredentials, storeCredentials } from './config.js';
 import { scaffold, type Template } from './init.js';
+import { openEscrow, sealEscrow } from './escrow.js';
 import { formatPublicKey, generateKey, kid, loadKey, makeRotation, parsePublicKey, saveKey, type Rotation } from './keys.js';
 import type { Manifest, Problem } from './manifest.js';
 import { startServe } from './serve.js';
 import { readZip, type ZipEntry } from './zip.js';
 
 const VERSION = '0.1.0';
-const BOOLEAN_FLAGS = new Set(['force', 'follow', 'f', 'logs', 'watch', 'json', 'allow-host-arch', 'insecure', 'help', 'h', 'version', 'v', 'print-recovery']);
+const BOOLEAN_FLAGS = new Set(['force', 'follow', 'f', 'logs', 'watch', 'json', 'allow-host-arch', 'insecure', 'help', 'h', 'version', 'v', 'print-recovery', 'recovery-key']);
 
 interface Args {
   cmd: string;
@@ -177,11 +180,64 @@ async function cmdLogin(a: Args) {
 
 async function cmdPublish(a: Args) {
   const target = a.pos[0] ?? '.';
+  const channel = str(a.flags, 'channel', 'public')!;
+  if (channel !== 'public' && channel !== 'beta') throw new UsageError('publish --channel public|beta');
   const { store, token } = storeCredentials({ store: str(a.flags, 'store'), token: str(a.flags, 'token') });
   const { plu, manifest } = buildSigned(target, a.flags);
-  const r = await api.publish(store, token, plu, `${manifest.id}-${manifest.version}.plu`);
-  console.log(`uploaded ${r.app_id} ${r.version} to ${store}: ${r.status}${r.created_app ? ' (new app)' : ''}${r.rotated ? ', key rotation accepted' : ''}`);
-  console.log(`signed by ${r.publisher_kid ?? '?'}; store countersign ${r.countersign_kind ?? 'none'} — a reviewer publishes it, you get mail either way`);
+  const r = await api.publish(store, token, plu, `${manifest.id}-${manifest.version}.plu`, channel);
+  console.log(`uploaded ${r.app_id} ${r.version} to ${store} (${channel}): ${r.status}${r.created_app ? ' (new app)' : ''}${r.rotated ? ', key rotation accepted' : ''}`);
+  if (channel === 'beta') console.log(`signed by ${r.publisher_kid ?? '?'}; live now for your beta boxes (plum-dev testers ${r.app_id})`);
+  else console.log(`signed by ${r.publisher_kid ?? '?'}; store countersign ${r.countersign_kind ?? 'none'} — a reviewer publishes it, you get mail either way`);
+}
+
+async function cmdTesters(a: Args) {
+  const appId = a.pos[0];
+  const verb = a.pos[1] ?? 'list';
+  if (!appId) throw new UsageError('testers <app-id> [list | add <box-serial> [--note …] | rm <box-serial>]');
+  const { store, token } = storeCredentials({ store: str(a.flags, 'store'), token: str(a.flags, 'token') });
+  if (verb === 'list') {
+    const rows = await api.testers(store, token, appId);
+    if (!rows.length) console.log(`no beta boxes for ${appId} yet — plum-dev testers ${appId} add <box-serial>`);
+    for (const t of rows) console.log(`${t.box_serial}${t.note ? '  ' + t.note : ''}`);
+    return;
+  }
+  const serial = a.pos[2];
+  if (!serial) throw new UsageError(`testers ${appId} ${verb} <box-serial>`);
+  if (verb === 'add') {
+    const t = await api.addTester(store, token, appId, serial, str(a.flags, 'note'));
+    console.log(`${t.box_serial} now receives the beta channel of ${appId}`);
+  } else if (verb === 'rm' || verb === 'remove') {
+    await api.removeTester(store, token, appId, serial);
+    console.log(`${serial} removed from ${appId} beta`);
+  } else throw new UsageError('testers <app-id> [list | add <serial> | rm <serial>]');
+}
+
+async function cmdEscrow(a: Args) {
+  const verb = a.pos[0];
+  const which = a.flags['recovery-key'] ? keyPath() + '.recovery' : keyPath();
+  if (verb === 'seal') {
+    if (!existsSync(which)) throw new Error(`${which} not found`);
+    const pass = str(a.flags, 'passphrase') ?? process.env.PLUM_ESCROW_PASSPHRASE ?? (await ask('escrow passphrase (min 8 chars, not stored anywhere): '));
+    const blob = sealEscrow(readFileSync(which), pass);
+    const out = str(a.flags, 'o') ?? str(a.flags, 'out');
+    if (out) {
+      writeFileSync(out, blob + '\n', { mode: 0o600 });
+      console.log(`${out}: escrow blob for ${basename(which)} — paste it into developer.plum.im › Signing keys › Escrow`);
+    } else console.log(blob);
+    return;
+  }
+  if (verb === 'open') {
+    const file = a.pos[1];
+    if (!file) throw new UsageError('escrow open <blob-file> [-o key-file]');
+    const pass = str(a.flags, 'passphrase') ?? process.env.PLUM_ESCROW_PASSPHRASE ?? (await ask('escrow passphrase: '));
+    const key = openEscrow(readFileSync(file, 'utf8'), pass);
+    const out = str(a.flags, 'o') ?? str(a.flags, 'out') ?? which;
+    if (existsSync(out) && !a.flags.force) throw new Error(`${out} exists; pass --force to overwrite`);
+    writeFileSync(out, key, { mode: 0o600 });
+    console.log(`restored ${out}`);
+    return;
+  }
+  throw new UsageError('escrow seal [--recovery-key] [-o file] | escrow open <blob-file> [-o key-file]');
 }
 
 async function cmdInit(a: Args) {
@@ -375,7 +431,9 @@ const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on y
   status | restart | uninstall <app-id>
   serve [dir] [--port 4040] [--service http://127.0.0.1:8080]
   rotate --app-id <id> (--old <key> | --recovery <key> --old-pub <pub>) [-o rotation.json]
-  publish [dir|.plu] [--store <url>] [--token <plum_pub_…>]   (or: login --publisher-token …)
+  publish [dir|.plu] [--store <url>] [--token <plum_pub_…>] [--channel public|beta]
+  testers <app-id> [list | add <box-serial> [--note …] | rm <box-serial>]
+  escrow seal [--recovery-key] [-o blob.txt] | escrow open <blob.txt> [-o key-file]
   whoami
 
 env: PLUM_DEV_HOME (config dir, default ~/.config/plum-dev), PLUM_DEV_KEY (publisher key path)`;
@@ -387,7 +445,7 @@ export async function main(argv: string[]): Promise<void> {
   const commands: Record<string, (a: Args) => Promise<void>> = {
     keygen: cmdKeygen, pair: cmdPair, login: cmdLogin, init: cmdInit, validate: cmdValidate, package: cmdPackage, sign: cmdSign,
     inspect: cmdInspect, push: cmdPush, logs: cmdLogs, status: cmdStatus, restart: cmdRestart, uninstall: cmdUninstall,
-    serve: cmdServe, rotate: cmdRotate, whoami: cmdWhoami, publish: cmdPublish,
+    serve: cmdServe, rotate: cmdRotate, whoami: cmdWhoami, publish: cmdPublish, testers: cmdTesters, escrow: cmdEscrow,
   };
   const fn = commands[a.cmd];
   if (!fn) throw new UsageError(`unknown command "${a.cmd}"\n\n${HELP}`);
