@@ -1,0 +1,18 @@
+{
+  "id": "dev.plum.bridgecheck",
+  "name": "Bridge Check",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "description": "Presses every plum.ui / plum.entitlement / plum.photos call of SDK v0.2 and shows what the host answered.",
+  "permissions": ["files:read", "files:write", "user:profile"],
+  "mobile": true,
+  "clients": [
+    {
+      "client_id": "dev.plum.bridgecheck:test",
+      "display_name": "Bridge Check (test client)",
+      "platform": "cli",
+      "redirect_uris": ["http://127.0.0.1/cb", "bridgecheck://cb"],
+      "scopes_allowed": ["files:read", "user:profile", "service:call:dev.plum.bridgecheck"]
+    }
+  ]
+}
