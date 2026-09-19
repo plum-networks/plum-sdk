@@ -109,6 +109,25 @@ export async function followLogs(c: Credentials, appId: string, onLine: (line: s
   }
 }
 
+export interface PublishResult {
+  app_id: string;
+  version: string;
+  status: string;
+  created_app: boolean;
+  publisher_kid?: string;
+  countersign_kind?: string;
+  rotated?: boolean;
+}
+
+/** Uploads a signed .plu to Plum Store with a publisher token (lands in review). */
+export async function publish(store: string, token: string, plu: Buffer, filename: string): Promise<PublishResult> {
+  const form = new FormData();
+  form.append('plu', new Blob([new Uint8Array(plu)], { type: 'application/octet-stream' }), filename);
+  const r = await fetch(new URL('/v1/publisher/versions', store), { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
+  if (!r.ok) throw await readError(r);
+  return (await r.json()) as PublishResult;
+}
+
 export async function trust(c: Credentials) {
   const r = await fetch(new URL('/api/apps/trust', c.box), { headers: auth(c) });
   if (!r.ok) throw await readError(r);

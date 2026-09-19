@@ -14,6 +14,7 @@
 //   status|restart|uninstall <app-id>
 //   serve [dir] [--port 4040] [--service http://127.0.0.1:8080]
 //   rotate --app-id <id> (--old <key> | --recovery <key> --old-pub <ed25519:…>) [-o rotation.json]
+//   publish [dir|.plu] [--store URL] [--token plum_pub_…]   upload to Plum Store (review queue)
 //   whoami
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -22,7 +23,7 @@ import { basename, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import * as api from './api.js';
 import { checkBundle, collectFiles, inspectPlu, resignPlu, signBundle, verifyPlu, type SignOptions } from './bundle.js';
-import { configDir, keyPath, loadCredentials, requireCredentials, saveCredentials } from './config.js';
+import { configDir, keyPath, loadCredentials, requireCredentials, saveCredentials, storeCredentials } from './config.js';
 import { scaffold, type Template } from './init.js';
 import { formatPublicKey, generateKey, kid, loadKey, makeRotation, parsePublicKey, saveKey, type Rotation } from './keys.js';
 import type { Manifest, Problem } from './manifest.js';
@@ -159,11 +160,28 @@ async function cmdPair(a: Args) {
 }
 
 async function cmdLogin(a: Args) {
+  const pubTok = str(a.flags, 'publisher-token');
+  if (pubTok) {
+    if (!pubTok.startsWith('plum_pub_')) throw new UsageError('login --publisher-token <plum_pub_…>  (from developer.plum.im › CLI tokens)');
+    const prev = loadCredentials() ?? { box: '', token: '' };
+    saveCredentials({ ...prev, publisher_token: pubTok, store: (str(a.flags, 'store') || prev.store || '').replace(/\/+$/, '') || undefined });
+    console.log(`publisher token saved to ${join(configDir(), 'credentials.json')}`);
+    return;
+  }
   const box = str(a.flags, 'box');
   const token = str(a.flags, 'token');
-  if (!box || !token) throw new UsageError('login --box <url> --token <plum_pat_…>   (token needs the apps:install and apps:dev scopes)');
+  if (!box || !token) throw new UsageError('login --box <url> --token <plum_pat_…>   (token needs the apps:install and apps:dev scopes)\n       login --publisher-token <plum_pub_…> [--store <url>]');
   saveCredentials({ ...(loadCredentials() ?? {}), box: normalizeBox(box), token });
   console.log(`credentials saved for ${normalizeBox(box)}`);
+}
+
+async function cmdPublish(a: Args) {
+  const target = a.pos[0] ?? '.';
+  const { store, token } = storeCredentials({ store: str(a.flags, 'store'), token: str(a.flags, 'token') });
+  const { plu, manifest } = buildSigned(target, a.flags);
+  const r = await api.publish(store, token, plu, `${manifest.id}-${manifest.version}.plu`);
+  console.log(`uploaded ${r.app_id} ${r.version} to ${store}: ${r.status}${r.created_app ? ' (new app)' : ''}${r.rotated ? ', key rotation accepted' : ''}`);
+  console.log(`signed by ${r.publisher_kid ?? '?'}; store countersign ${r.countersign_kind ?? 'none'} — a reviewer publishes it, you get mail either way`);
 }
 
 async function cmdInit(a: Args) {
@@ -338,6 +356,8 @@ async function cmdWhoami() {
   } else console.log('publisher  (no key; run plum-dev keygen)');
   if (c) console.log(`box        ${c.box}${c.namespace ? '  namespace ' + c.namespace : ''}${c.paired_at ? '  paired ' + c.paired_at : ''}`);
   else console.log('box        (not paired; run plum-dev pair <box-url>)');
+  if (c?.publisher_token) console.log(`store      ${c.store || 'https://store.plum.im'}  token ${c.publisher_token.slice(0, 17)}…`);
+  else console.log('store      (no publisher token; plum-dev login --publisher-token <plum_pub_…>)');
 }
 
 const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on your own box
@@ -355,6 +375,7 @@ const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on y
   status | restart | uninstall <app-id>
   serve [dir] [--port 4040] [--service http://127.0.0.1:8080]
   rotate --app-id <id> (--old <key> | --recovery <key> --old-pub <pub>) [-o rotation.json]
+  publish [dir|.plu] [--store <url>] [--token <plum_pub_…>]   (or: login --publisher-token …)
   whoami
 
 env: PLUM_DEV_HOME (config dir, default ~/.config/plum-dev), PLUM_DEV_KEY (publisher key path)`;
@@ -366,7 +387,7 @@ export async function main(argv: string[]): Promise<void> {
   const commands: Record<string, (a: Args) => Promise<void>> = {
     keygen: cmdKeygen, pair: cmdPair, login: cmdLogin, init: cmdInit, validate: cmdValidate, package: cmdPackage, sign: cmdSign,
     inspect: cmdInspect, push: cmdPush, logs: cmdLogs, status: cmdStatus, restart: cmdRestart, uninstall: cmdUninstall,
-    serve: cmdServe, rotate: cmdRotate, whoami: cmdWhoami,
+    serve: cmdServe, rotate: cmdRotate, whoami: cmdWhoami, publish: cmdPublish,
   };
   const fn = commands[a.cmd];
   if (!fn) throw new UsageError(`unknown command "${a.cmd}"\n\n${HELP}`);

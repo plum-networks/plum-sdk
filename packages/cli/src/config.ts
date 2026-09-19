@@ -18,6 +18,10 @@ export interface Credentials {
   kid?: string;
   namespace?: string;
   paired_at?: string;
+  // Plum Store publishing (plum-dev publish): a publisher token from the
+  // developer console (developer.plum.im › CLI tokens), never the box token.
+  store?: string;
+  publisher_token?: string;
 }
 
 export function loadCredentials(): Credentials | null {
@@ -33,6 +37,22 @@ export function loadCredentials(): Credentials | null {
 export function saveCredentials(c: Credentials): void {
   mkdirSync(configDir(), { recursive: true, mode: 0o700 });
   writeFileSync(join(configDir(), 'credentials.json'), JSON.stringify(c, null, 2) + '\n', { mode: 0o600 });
+}
+
+export const DEFAULT_STORE = 'https://store.plum.im';
+
+/** Store URL + publisher token, from flags/env first, then credentials.json. */
+export function storeCredentials(flags: { store?: string; token?: string }): { store: string; token: string } {
+  const c = loadCredentials();
+  const token = flags.token || process.env.PLUM_PUBLISHER_TOKEN || c?.publisher_token || '';
+  const store = (flags.store || process.env.PLUM_STORE_URL || c?.store || DEFAULT_STORE).replace(/\/+$/, '');
+  if (!token) {
+    throw new Error(
+      'no publisher token — create one at developer.plum.im › CLI tokens, then: plum-dev login --publisher-token <plum_pub_…>  (or set PLUM_PUBLISHER_TOKEN)',
+    );
+  }
+  if (!token.startsWith('plum_pub_')) throw new Error('publisher tokens start with plum_pub_ (a box token cannot publish)');
+  return { store, token };
 }
 
 export function requireCredentials(): Credentials {

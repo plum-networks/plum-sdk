@@ -20,7 +20,7 @@ plum-dev push --logs                 # sign → install → follow the service l
 |---|---|
 | `keygen [--force]` | Creates `~/.config/plum-dev/publisher.key` and `publisher.key.recovery` (Ed25519, mode 0600) plus `recovery.pub`. Move the recovery key offline. |
 | `pair <box-url> [--name] [--namespace dev.me.]` | Asks the box to trust your key for apps under your namespace. The owner sees a 6-digit code in Settings › Developer; you type it in. Saves a developer token (`apps:install` + `apps:dev`) to `credentials.json`. |
-| `login --box <url> --token <plum_pat_…>` | Use a token you created yourself instead of pairing. |
+| `login --box <url> --token <plum_pat_…>` | Use a token you created yourself instead of pairing. `login --publisher-token <plum_pub_…>` saves a store publishing token. |
 | `init <name> [--template panel\|server-go] [--id]` | Scaffolds an app that already passes `validate`. |
 | `validate [dir\|.plu] [--allow-host-arch]` | The box's rules, locally: manifest fields, permissions, limits, entry/icon presence, arm64 ELF check for `server.bin`, size caps. |
 | `package [dir] [-o out.plu] [--rotation r.json] [--no-recovery]` | Deterministic zip (sorted entries, fixed timestamps) with `META/MANIFEST.sha256`, `META/publisher.pub`, `META/publisher.sig`, optional `META/recovery.pub` and `META/rotation.json`. Prints the sha256. |
@@ -31,6 +31,7 @@ plum-dev push --logs                 # sign → install → follow the service l
 | `status`, `restart`, `uninstall <app-id>` | What they say. |
 | `serve [dir] [--port 4040] [--service URL]` | Runs a panel on your laptop: static files under `/apps/<id>/`, the mock SDK at `/apps/runtime/plum-sdk.js`, and `/apps/<id>/svc/*` proxied to `--service` with the same `X-Plum-*` identity headers the box injects. |
 | `rotate --app-id <id> (--old <key> \| --recovery <key> --old-pub <pub>)` | Writes a signed rotation record so boxes accept a new key for an app you already shipped. Include it with `package --rotation`. |
+| `publish [dir\|.plu] [--store URL] [--token plum_pub_…]` | Signs (like `package`) and uploads to Plum Store with a publisher token from developer.plum.im › CLI tokens (`login --publisher-token …` saves it; `PLUM_PUBLISHER_TOKEN` works too). The store verifies the signature against your registered key and queues the version for review. |
 | `whoami` | Config dir, key, paired box. |
 
 `.plumignore` in the app directory lists paths to leave out of the bundle (one
