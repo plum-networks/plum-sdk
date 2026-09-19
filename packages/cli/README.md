@@ -62,3 +62,17 @@ Errors come back as `signature_invalid`, `publisher_untrusted`,
 The signing format is shared with the box's Go implementation (`cmd/plu` in
 plum-box-core); the test suite cross-checks against it when that tool is on
 the machine.
+
+## Emulator (no box needed)
+
+`plum-box-dev` is the Plum Box in a container (the closed core binary, like an Android system image):
+
+```
+plum-dev emulator up            # docker compose up -d  (ghcr.io/plum-networks/plum-box-dev)
+plum-dev emulator login         # reads the developer token out of the container
+plum-dev push --target emulator # or: PLUM_DEV_TARGET=emulator
+```
+
+Web UI at http://localhost:8080 (`dev` / `plumbox-dev`). Unsigned bundles and host-architecture binaries are
+accepted there and only there; `plum-dev validate` still warns about anything the store would refuse.
+`emulator logs -f`, `emulator token`, `emulator down --volumes` (reset). Details: the core repo's `emulator/README.md`.

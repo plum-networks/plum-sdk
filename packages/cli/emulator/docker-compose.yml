@@ -1,0 +1,27 @@
+# plum-box-dev — run a Plum Box on your laptop (plan T8.3).
+#
+#   docker compose -f emulator/docker-compose.yml up -d
+#   plum-dev emulator login        # reads the developer token out of the container
+#   plum-dev push --target emulator
+#
+# The same file ships with @plumbox/dev (plum-dev emulator up).
+services:
+  plum-box-dev:
+    image: ghcr.io/plum-networks/plum-box-dev:latest
+    container_name: plum-box-dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - plum-data:/data/plum
+      - plum-storage:/mnt/storage
+    environment:
+      PLUMBOX_DEV_OWNER_EMAIL: dev@plum.local
+      PLUMBOX_DEV_OWNER_USER: dev
+      PLUMBOX_DEV_OWNER_PASSWORD: plumbox-dev
+      # PLUMBOX_DEV_STORE_CATALOG: /data/plum/dev-catalog.json
+      # PLUMBOX_APP_CGROUPS: "0"
+    restart: unless-stopped
+
+volumes:
+  plum-data: {}
+  plum-storage: {}

@@ -22,6 +22,9 @@ export interface Credentials {
   // developer console (developer.plum.im › CLI tokens), never the box token.
   store?: string;
   publisher_token?: string;
+  // The local emulator (plum-dev emulator login): kept beside the real box so
+  // `push --target emulator` never clobbers the pairing.
+  emulator?: { box: string; token: string; logged_in_at?: string };
 }
 
 export function loadCredentials(): Credentials | null {
@@ -55,10 +58,25 @@ export function storeCredentials(flags: { store?: string; token?: string }): { s
   return { store, token };
 }
 
-export function requireCredentials(): Credentials {
+export const EMULATOR_BOX = 'http://127.0.0.1:8080';
+
+/**
+ * Which box a command talks to: the paired box (default) or the emulator
+ * (`--target emulator`, or PLUM_DEV_TARGET=emulator). The emulator entry is a
+ * Credentials view of the same shape so api.ts does not care.
+ */
+export function requireCredentials(target?: string): Credentials {
   const c = loadCredentials();
+  const t = (target || process.env.PLUM_DEV_TARGET || 'box').toLowerCase();
+  if (t === 'emulator' || t === 'emu') {
+    if (!c?.emulator?.box || !c.emulator.token) {
+      throw new Error('no emulator session — run: plum-dev emulator up && plum-dev emulator login   (or plum-dev emulator login --token <plum_pat_…>)');
+    }
+    return { ...c, box: c.emulator.box, token: c.emulator.token };
+  }
+  if (t !== 'box') throw new Error(`--target must be "box" or "emulator", not "${target}"`);
   if (!c || !c.box || !c.token) {
-    throw new Error('not connected to a box yet — run: plum-dev pair <box-url>   (or plum-dev login --box <url> --token <plum_pat_…>)');
+    throw new Error('not connected to a box yet — run: plum-dev pair <box-url>   (or plum-dev login --box <url> --token <plum_pat_…>; for the emulator: plum-dev emulator login)');
   }
   return c;
 }
