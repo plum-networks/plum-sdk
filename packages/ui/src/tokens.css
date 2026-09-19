@@ -1,0 +1,135 @@
+/* @plumbox/ui — design tokens.
+ *
+ * The same values the Plum phone apps use (iOS PlumColors.swift / PlumMetrics.swift,
+ * Android PlumColors.kt), as CSS custom properties, so a .plu panel looks like the
+ * app it runs inside. Light is the default; dark applies with
+ * `html[data-theme="dark"]` (the SDK runtime sets it from the host) or the OS
+ * preference when no data-theme is present.
+ */
+:root {
+  /* surfaces + ink */
+  --plum-bg: #FCFCFC;
+  --plum-surface: #FFFFFF;
+  --plum-surface2: #F6F6F7;
+  --plum-ink: #101012;
+  --plum-ink-soft: #3A3A40;
+  --plum-muted: #6E6E76;
+  --plum-faint: #9A9AA1;
+  --plum-line: #ECECEE;
+  --plum-line-strong: #DEDEE1;
+  --plum-fill: rgba(120, 120, 128, 0.15);
+  --plum-ph: #DDDDE3;
+  --plum-ph2: #CDCDD5;
+  --plum-ph3: #BCBCC6;
+  /* status */
+  --plum-live: #2E7D5B;
+  --plum-review: #A9741F;
+  --plum-reject: #A83A3A;
+  /* glass + scrim */
+  --plum-glass: rgba(252, 252, 252, 0.68);
+  --plum-glass-line: rgba(16, 16, 18, 0.08);
+  --plum-scrim: rgba(10, 10, 11, 0.26);
+  /* roles */
+  --plum-primary: var(--plum-ink);
+  --plum-on-primary: var(--plum-bg);
+
+  /* metrics (PlumMetrics) */
+  --plum-inset-h: 16px;
+  --plum-card-pad-h: 13px;
+  --plum-group-gap: 10px;
+  --plum-divider-inset: 56px;
+  --plum-nav-bar-h: 44px;
+  --plum-row-min: 44px;
+  --plum-min-tap: 44px;
+  --plum-button-h: 52px;
+  --plum-search-pill-h: 38px;
+  --plum-segment-h: 34px;
+  --plum-avatar-s: 30px;
+  --plum-avatar-l: 56px;
+  --plum-icon-tile: 32px;
+  /* radii */
+  --plum-r-card: 14px;
+  --plum-r-card-l: 18px;
+  --plum-r-sheet: 22px;
+  --plum-r-icon-tile: 8px;
+  --plum-r-thumb: 10px;
+  --plum-r-pill: 999px;
+  --plum-hairline: 1px;
+  /* shadows */
+  --plum-shadow-card: 0 6px 10px rgba(0, 0, 0, 0.22);
+  --plum-shadow-sheet: 0 -8px 14px rgba(0, 0, 0, 0.28);
+  --plum-shadow-knob: 0 1px 1.5px rgba(0, 0, 0, 0.22);
+  --plum-shadow-segment: 0 1px 1.5px rgba(0, 0, 0, 0.14);
+  /* motion (PlumMotion) */
+  --plum-ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --plum-ease-smooth: cubic-bezier(0.32, 0.72, 0, 1);
+  --plum-dur-standard: 280ms;
+  --plum-dur-smooth: 340ms;
+  --plum-dur-sheet: 550ms;
+  --plum-dur-screen: 220ms;
+  /* type */
+  --plum-font: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --plum-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --plum-text-title: 600 17px/1.3 var(--plum-font);
+  --plum-text-body: 400 15px/1.45 var(--plum-font);
+  --plum-text-small: 400 13px/1.4 var(--plum-font);
+  --plum-text-mono: 400 11px/1.3 var(--plum-font-mono);
+  color-scheme: light dark;
+}
+
+html[data-theme="dark"] {
+  --plum-bg: #0A0A0B;
+  --plum-surface: #151517;
+  --plum-surface2: #1C1C1F;
+  --plum-ink: #F4F4F5;
+  --plum-ink-soft: #C8C8CE;
+  --plum-muted: #97979F;
+  --plum-faint: #6A6A72;
+  --plum-line: #26262A;
+  --plum-line-strong: #34343A;
+  --plum-fill: rgba(120, 120, 128, 0.30);
+  --plum-ph: #2E2E33;
+  --plum-ph2: #3A3A41;
+  --plum-ph3: #46464E;
+  --plum-live: #4CAF7D;
+  --plum-review: #C99A3E;
+  --plum-reject: #D26A6A;
+  --plum-glass: rgba(22, 22, 24, 0.72);
+  --plum-glass-line: rgba(244, 244, 245, 0.10);
+  --plum-scrim: rgba(10, 10, 11, 0.26);
+  --plum-shadow-card: 0 6px 10px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]):not([data-theme="dark"]) {
+    --plum-bg: #0A0A0B;
+    --plum-surface: #151517;
+    --plum-surface2: #1C1C1F;
+    --plum-ink: #F4F4F5;
+    --plum-ink-soft: #C8C8CE;
+    --plum-muted: #97979F;
+    --plum-faint: #6A6A72;
+    --plum-line: #26262A;
+    --plum-line-strong: #34343A;
+    --plum-fill: rgba(120, 120, 128, 0.30);
+    --plum-ph: #2E2E33;
+    --plum-ph2: #3A3A41;
+    --plum-ph3: #46464E;
+    --plum-live: #4CAF7D;
+    --plum-review: #C99A3E;
+    --plum-reject: #D26A6A;
+    --plum-glass: rgba(22, 22, 24, 0.72);
+    --plum-glass-line: rgba(244, 244, 245, 0.10);
+    --plum-shadow-card: 0 6px 10px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* A sensible page base so a panel starts looking right with one import. */
+.plum-page, body.plum-page {
+  margin: 0;
+  background: var(--plum-bg);
+  color: var(--plum-ink);
+  font: var(--plum-text-body);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@plumbox/ui",
+  "version": "0.1.0",
+  "description": "Plum Box design system for .plu panels: the phone apps' tokens (colors, spacing, radii, type) as CSS custom properties, plus eight framework-free web components.",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/plum-networks/plum-sdk", "directory": "packages/ui" },
+  "type": "module",
+  "main": "./src/plum-ui.js",
+  "style": "./src/tokens.css",
+  "exports": {
+    ".": "./src/plum-ui.js",
+    "./tokens.css": "./src/tokens.css",
+    "./plum-ui.js": "./src/plum-ui.js"
+  },
+  "files": ["src", "README.md"],
+  "sideEffects": true,
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  }
+}

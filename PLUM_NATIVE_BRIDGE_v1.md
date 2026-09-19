@@ -44,10 +44,10 @@
 
 | capability | method | params | result | 오류 |
 |---|---|---|---|---|
-| `share` | `share` | `{ text?, url?, handles?: FileHandle[] }` 최소 하나 | `{}` | `cancelled`, `failed` |
+| `share` | `share` | `{ text?, url?, handles?: FileHandle[], token? }` 최소 하나(`token` = 핸들이 있을 때 페이지의 앱 토큰) | `{}` | `cancelled`, `failed` |
 | `clipboard` | `clipboard.write` | `{ text }` | `{}` | `failed` |
 | 〃 | `clipboard.read` | `{}` | `{ text }` | `denied`(OS 가 막음), `failed` |
-| `capture` | `capture` | `{ mode: "photo" \| "video" }` | `{ handle: FileHandle }` | `cancelled`, `denied`(카메라 권한), `failed` |
+| `capture` | `capture` | `{ mode: "photo" \| "video" }` | `{ kind: "drive", path: "/Camera/IMG_….jpg", name }` | `cancelled`, `denied`(카메라 권한), `failed` |
 | `haptic` | `haptic` | `{ style: "light" \| "medium" \| "heavy" \| "success" \| "warning" \| "error" }` | `{}` | — (없는 기기는 조용히 `{}`) |
 | `openExternal` | `openExternal` | `{ url }` (`http(s)://` 만) | `{}` | `invalid_params`, `failed` |
 | `biometric` | `biometric.confirm` | `{ reason }` | `{ ok: true }` | `cancelled`, `unavailable`(등록 안 됨/미지원), `failed` |
@@ -60,14 +60,17 @@
 `timeout`(페이지 쪽), `failed`. 메시지는 사람이 읽는 영어 한 줄.
 
 ### share
-- `handles` 가 있으면 셸이 `GET /api/apps/handle/<id>/read` 로 바이트를 받아(세션 쿠키·앱 토큰은 셸이 이미
-  갖고 있다) 임시 파일로 두고 시스템 공유 시트에 넣는다. 핸들 권한은 SDK 와 같다(`files:read`).
+- `handles` 가 있으면 셸이 `GET /api/apps/handle/<id>/read` 로 바이트를 받아 임시 파일로 두고 시스템 공유 시트에
+  넣는다. 핸들은 (사용자, 앱) 에 묶여 있으므로 셸은 페이지가 같이 보낸 `token`(prelude 의 앱 토큰)을
+  `X-Plum-App-Token` 으로, 보조로 `X-Plum-App-Id` 를 실어 **그 앱으로서** 읽는다. 핸들 권한은 SDK 와 같다(`files:read`).
 - `text` 와 `url` 만 있으면 텍스트 공유. 시트가 닫히면 `{}` — 사용자가 어디로 보냈는지는 알려주지 않는다.
 
 ### capture
-- 셸이 시스템 카메라를 연다. 결과는 사용자의 Drive `Camera/` 폴더에 업로드한 뒤(셸의 기존 업로드 경로)
-  `POST /api/apps/picker/grant` 로 그 앱에 핸들을 발급해 돌려준다. 앱은 이후 `plum.files.readBytes(handle)`.
-- 왜 핸들인가: 사진 한 장이 10 MB 를 넘고 브리지는 문자열 채널이다. 바이트를 JS 로 옮기지 않는다.
+- 셸이 시스템 카메라를 연다. 결과는 사용자의 Drive `Camera/` 폴더에 업로드한 뒤(셸의 기존 업로드 경로) **어디에
+  놓였는지만** 돌려준다(`{kind:"drive", path}`). 핸들은 **페이지의 SDK 가** `POST /api/apps/picker/grant` 로 직접
+  발급한다 — 앱 토큰(prelude)이 페이지에만 있으므로 grant 는 그 앱과 그 앱의 권한(`files:write`)에 묶인다. 셸은 앱
+  신원을 알 필요가 없다.
+- 왜 경로/핸들인가: 사진 한 장이 10 MB 를 넘고 브리지는 문자열 채널이다. 바이트를 JS 로 옮기지 않는다.
 - 카메라 권한 거부 → `denied`. 사용자가 촬영 취소 → `cancelled`.
 
 ### nav

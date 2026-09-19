@@ -1272,10 +1272,15 @@
       if (handles.length) requirePerm('files:read');
       if (!o.text && !o.url && !handles.length) throw new Error('share: text, url or handles required');
       if (native.has('share')) {
+        // The shell fetches the handles' bytes itself; it needs to read them
+        // AS this app, so the page's app token (prelude) rides along. The
+        // shell already holds the session — the token adds the app identity.
+        const ctx = window.__PLUM_APP__ || {};
         await native.call('share', {
           text: o.text == null ? undefined : String(o.text),
           url: o.url == null ? undefined : String(o.url),
-          handles: handles.map(function (h) { return { id: String(h.id), name: String(h.name || '') }; })
+          handles: handles.map(function (h) { return { id: String(h.id), name: String(h.name || '') }; }),
+          token: handles.length && ctx.token ? String(ctx.token) : undefined
         });
         return;
       }
@@ -1320,9 +1325,12 @@
       requirePerm('files:write');
       const mode = opts && opts.mode === 'video' ? 'video' : 'photo';
       if (native.has('capture')) {
+        // The shell shoots and uploads into the user's Drive, then tells us
+        // where the file landed; the handle is minted HERE, with this page's
+        // app token, so the grant stays tied to this app and its permissions.
         const r = await native.call('capture', { mode: mode }, 10 * 60 * 1000);
-        if (!r || !r.handle || !r.handle.id) throw new NetworkError('capture: the shell returned no file handle');
-        return { id: String(r.handle.id), name: String(r.handle.name || '') };
+        if (!r || !r.path) throw new NetworkError('capture: the shell returned no file');
+        return grantPicked({ kind: r.kind || 'drive', path: String(r.path) });
       }
       const file = await pickCaptureFile(mode);
       if (!file) throw new CancelledError('capture cancelled');
