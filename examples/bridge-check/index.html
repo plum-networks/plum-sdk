@@ -52,7 +52,7 @@
     <button data-t="photos">photos.pick</button>
     <button data-t="ent">entitlement.get()</button>
     <button data-t="ent-refresh">entitlement.refresh()</button>
-    <button data-t="events" class="wide">events.subscribe (5s)</button>
+    <button data-t="events" class="wide">events: save a file, expect a drive event</button>
     <button data-t="alert">alert / confirm / prompt</button>
     <button data-t="link" class="wide">external link (&lt;a target=_blank&gt;)</button>
   </div>
@@ -106,9 +106,17 @@
     'photos': function () { return plum.photos.pick({}).then(function (h) { picked = h; return h; }); },
     'ent': function () { return plum.entitlement.get(); },
     'ent-refresh': function () { return plum.entitlement.refresh(); },
+    // Subscribe, then make a change ourselves (save a tiny file through the
+    // picker) so a drive event must arrive; 0 means the channel is broken.
     'events': function () {
-      var n = 0; var off = plum.events.subscribe([], function (ev) { n++; out('ok', 'event', ev.kind); });
-      return new Promise(function (r) { setTimeout(function () { off(); r({ eventsIn5s: n }); }, 5000); });
+      var n = 0; var kinds = [];
+      var off = plum.events.subscribe([], function (ev) { n++; kinds.push(ev.kind); out('ok', 'event', ev.kind); });
+      return plum.files.saveAsPicker({ defaultName: 'bridge-check-' + Date.now() + '.txt' }).then(function (h) {
+        if (!h) { off(); throw new Error('save cancelled — no change made, nothing to observe'); }
+        return plum.files.writeBytes(h, new TextEncoder().encode('bridge check ' + new Date().toISOString()));
+      }).then(function () {
+        return new Promise(function (r) { setTimeout(function () { off(); r({ eventsAfterWrite: n, kinds: kinds }); }, 4000); });
+      });
     },
     'alert': function () { alert('alert ok'); var c = confirm('confirm?'); var p = prompt('prompt?', 'default'); return { confirm: c, prompt: p }; },
     'link': function () { window.open('https://plum.im', '_blank'); }
