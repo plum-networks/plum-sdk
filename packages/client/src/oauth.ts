@@ -2,7 +2,7 @@ import { errorFromResponse } from "./errors.js";
 import type { HttpAdapter } from "./http.js";
 import { responseJSON, responseText } from "./http.js";
 import { fetchAdapter } from "./adapters/fetch.js";
-import type { TokenScope } from "./types.js";
+import type { OAuthScope } from "./types.js";
 
 /**
  * Delegated authorization (OAuth 2.0 Authorization Code + PKCE) for third-party
@@ -24,10 +24,23 @@ import type { TokenScope } from "./types.js";
 export const DEFAULT_PORTAL_URL = "https://plumbox.me";
 
 export interface BeginAuthorizationOptions {
+  /**
+   * The client id you registered for this app in the Plum developer console
+   * (`<app_id>:<label>`, e.g. `com.example.notes:ios`), or declared in your
+   * app's manifest `clients[]`. The box refuses an unregistered client_id
+   * with `unauthorized_client` before showing any consent screen.
+   */
   clientId: string;
-  clientName: string;
+  /**
+   * @deprecated The consent screen shows the display name from the client
+   * registration; this value is ignored by boxes that know the registry. Kept
+   * for older boxes, still sent when provided.
+   */
+  clientName?: string;
+  /** Must equal one of the redirect URIs registered for the client (loopback http: any port). */
   redirectUri: string;
-  scopes: TokenScope[];
+  /** Must be a subset of the scopes the client was registered with. */
+  scopes: OAuthScope[];
   /** Portal that hosts the /authorize consent page. */
   portalUrl?: string;
 }
@@ -115,6 +128,13 @@ async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
 export async function beginAuthorization(
   opts: BeginAuthorizationOptions,
 ): Promise<AuthorizationRequest> {
+  const clientId = (opts.clientId ?? "").trim();
+  if (!clientId) {
+    throw new Error("beginAuthorization: clientId is required (register one in the Plum developer console)");
+  }
+  if (!opts.scopes || opts.scopes.length === 0) {
+    throw new Error("beginAuthorization: at least one scope is required");
+  }
   const portal = (opts.portalUrl ?? DEFAULT_PORTAL_URL).replace(/\/+$/, "");
   // PKCE verifier: 43–128 chars from the unreserved set. 32 random bytes
   // base64url-encoded → 43 chars.
@@ -124,14 +144,14 @@ export async function beginAuthorization(
 
   const params = new URLSearchParams({
     response_type: "code",
-    client_id: opts.clientId,
-    client_name: opts.clientName,
+    client_id: clientId,
     redirect_uri: opts.redirectUri,
     scope: opts.scopes.join(" "),
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
     state,
   });
+  if (opts.clientName) params.set("client_name", opts.clientName);
   return { url: `${portal}/authorize?${params}`, codeVerifier, state };
 }
 
@@ -139,6 +159,10 @@ export async function beginAuthorization(
  * Exchange the authorization code for a scoped access token (PAT). Verify the
  * returned `state` matches what `beginAuthorization` produced BEFORE calling
  * this. Returns the token to store — the password was never seen by your app.
+ *
+ * Errors carry the box's OAuth code in `PlumApiError.code`:
+ * `invalid_grant` (code used, expired or PKCE mismatch), `unauthorized_client`
+ * (client_id not registered), `invalid_scope`, `invalid_redirect_uri`.
  */
 export async function exchangeCode(
   opts: ExchangeCodeOptions,

@@ -3,6 +3,7 @@ import { errorFromResponse, PlumAuthError } from "./errors.js";
 import type { HttpAdapter, HttpResponse } from "./http.js";
 import { joinURL, parseSessionCookie, responseJSON, responseText } from "./http.js";
 import { DriveApi } from "./drive.js";
+import { AppsApi } from "./apps.js";
 import type { CreatedToken, TokenInfo, TokenScope, TokenStorage } from "./types.js";
 
 export interface PlumClientOptions {
@@ -36,6 +37,7 @@ export class PlumClient {
   readonly baseUrl: string;
   readonly drive: DriveApi;
   readonly auth: AuthApi;
+  readonly apps: AppsApi;
 
   private http: HttpAdapter;
   private token?: string;
@@ -51,6 +53,7 @@ export class PlumClient {
     this.onAuthError = opts.onAuthError;
     this.drive = new DriveApi(this);
     this.auth = new AuthApi(this);
+    this.apps = new AppsApi(this);
   }
 
   /** Load a previously stored PAT from tokenStorage. Returns true when found. */

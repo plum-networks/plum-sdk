@@ -13,6 +13,26 @@ function textResponse(status: number, body: string) {
 }
 
 describe("beginAuthorization", () => {
+  it("requires a registered clientId and at least one scope", async () => {
+    await expect(
+      beginAuthorization({ clientId: " ", redirectUri: "x://cb", scopes: ["files:read"] }),
+    ).rejects.toThrow(/clientId is required/);
+    await expect(
+      beginAuthorization({ clientId: "com.example.notes:ios", redirectUri: "x://cb", scopes: [] }),
+    ).rejects.toThrow(/scope/);
+  });
+
+  it("sends the scope vocabulary and omits client_name unless given", async () => {
+    const req = await beginAuthorization({
+      clientId: "com.example.notes:ios",
+      redirectUri: "examplenotes://oauth/callback",
+      scopes: ["files:read", "user:profile", "service:call:com.example.notes"],
+    });
+    const url = new URL(req.url);
+    expect(url.searchParams.get("scope")).toBe("files:read user:profile service:call:com.example.notes");
+    expect(url.searchParams.has("client_name")).toBe(false);
+  });
+
   it("builds a portal URL with a valid S256 PKCE challenge", async () => {
     const req = await beginAuthorization({
       clientId: "obsidian-plum-sync",

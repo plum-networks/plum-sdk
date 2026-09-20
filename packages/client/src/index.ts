@@ -1,6 +1,7 @@
 export { PlumClient } from "./client.js";
 export type { PlumClientOptions, LoginResult, LoginOk, LoginNeedsTotp, AuthApi } from "./client.js";
 export { DriveApi } from "./drive.js";
+export { AppsApi } from "./apps.js";
 export { discover, DEFAULT_RELAY_URL } from "./discover.js";
 export type { DiscoverResult } from "./discover.js";
 export {
@@ -25,6 +26,11 @@ export type {
   TokenInfo,
   CreatedToken,
   TokenScope,
+  OAuthScope,
+  AppServiceStatus,
+  SkuEntitlement,
+  AppEntitlement,
+  EnsureServiceResult,
   TokenStorage,
   TrashEntry,
   FileVersion,
