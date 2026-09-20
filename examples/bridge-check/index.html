@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bridge Check</title>
+<style>
+  :root { color-scheme: light dark; --bg:#FCFCFC; --ink:#101012; --muted:#6E6E76; --line:#ECECEE; --surface:#F6F6F7; --ok:#2E7D5B; --err:#A83A3A; }
+  html[data-theme="dark"] { --bg:#0A0A0B; --ink:#F4F4F5; --muted:#97979F; --line:#26262A; --surface:#1C1C1F; --ok:#4CAF7D; --err:#D26A6A; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, "Pretendard Variable", Pretendard, system-ui, sans-serif; }
+  header { padding: 14px 16px 6px; }
+  h1 { margin: 0; font-size: 18px; } .sub { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
+  main { flex: 1; overflow: auto; padding: 0 16px 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+  button { min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; padding: 0 10px; }
+  button:active { opacity: .8; }
+  button.wide { grid-column: 1 / -1; }
+  #log { font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; background: var(--surface); border-radius: 12px; padding: 10px; min-height: 120px; }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 16px 0 4px; }
+</style>
+</head>
+<body>
+<header><h1>Bridge Check</h1><div class="sub" id="meta">loading…</div></header>
+<main>
+  <h2>host</h2>
+  <div class="grid">
+    <button data-t="caps">app.capabilities()</button>
+    <button data-t="host">app.host()</button>
+    <button data-t="theme">theme / locale</button>
+    <button data-t="user">user.current()</button>
+  </div>
+  <h2>plum.ui</h2>
+  <div class="grid">
+    <button data-t="share-text">share text</button>
+    <button data-t="share-file">share file (picks one if none)</button>
+    <button data-t="clip-write">clipboard.write</button>
+    <button data-t="clip-read">clipboard.read</button>
+    <button data-t="capture">capture photo</button>
+    <button data-t="capture-video">capture video</button>
+    <button data-t="haptic">haptic (success)</button>
+    <button data-t="external">openExternal</button>
+    <button data-t="bio">biometric.confirm</button>
+    <button data-t="back">back handler on/off</button>
+    <button data-t="close">nav.close()</button>
+    <button data-t="open">app.open(im.plum.downloader)</button>
+  </div>
+  <h2>files · photos · entitlement · events</h2>
+  <div class="grid">
+    <button data-t="pick">files.openPicker</button>
+    <button data-t="photos">photos.pick</button>
+    <button data-t="ent">entitlement.get()</button>
+    <button data-t="ent-refresh">entitlement.refresh()</button>
+    <button data-t="events" class="wide">events: save a file, expect a drive event</button>
+    <button data-t="alert">alert / confirm / prompt</button>
+    <button data-t="link" class="wide">external link (&lt;a target=_blank&gt;)</button>
+  </div>
+  <h2>log</h2>
+  <div id="log"></div>
+</main>
+<script src="/apps/runtime/plum-sdk.js"></script>
+<script>
+(function () {
+  var log = document.getElementById('log');
+  var picked = null, backOn = false;
+  function out(kind, label, v) {
+    var line = document.createElement('div');
+    line.className = kind;
+    line.textContent = new Date().toTimeString().slice(0, 8) + ' ' + label + ' ' + (typeof v === 'string' ? v : JSON.stringify(v));
+    log.prepend(line);
+  }
+  function run(label, fn) {
+    Promise.resolve().then(fn).then(function (v) { out('ok', label + ' ✓', v === undefined ? 'ok' : v); })
+      .catch(function (e) { out('err', label + ' ✗', (e && e.code ? e.code + ': ' : '') + (e && e.message ? e.message : String(e)) + (e && e.nativeCode ? ' [' + e.nativeCode + ']' : '')); });
+  }
+  var ctx = window.__PLUM_APP__ || {};
+  document.getElementById('meta').textContent = (ctx.id || '?') + ' · v' + (ctx.version || '?') + (ctx.dev ? ' · dev build' : '') + ' · native=' + (window.__PLUM_NATIVE__ ? window.__PLUM_NATIVE__.platform + ' v' + window.__PLUM_NATIVE__.version : 'none');
+  if (!window.plum) { out('err', 'sdk', 'window.plum missing'); return; }
+  if (!plum.ui) out('err', 'sdk', 'plum.ui missing — box runtime is older than v0.2');
+  plum.app.onThemeChange && plum.app.onThemeChange(function (t) { out('ok', 'event theme', t); });
+  plum.app.onLocaleChange && plum.app.onLocaleChange(function (l) { out('ok', 'event locale', l); });
+
+  var actions = {
+    'caps': function () { return plum.app.capabilities(); },
+    'host': function () { return plum.app.host(); },
+    'theme': function () { return { theme: plum.app.theme(), locale: plum.app.locale() }; },
+    'user': function () { return plum.user.current(); },
+    'share-text': function () { return plum.ui.share({ text: 'Bridge Check from Plum Box', url: 'https://plum.im' }); },
+    // Shares the last captured/picked file; opens the picker first when there is none yet.
+    'share-file': function () {
+      var ready = picked ? Promise.resolve(picked) : plum.files.openPicker({}).then(function (h) {
+        if (!h) throw new Error('nothing picked');
+        picked = h; return h;
+      });
+      return ready.then(function (h) { return plum.ui.share({ handles: [h] }).then(function () { return { shared: h.name }; }); });
+    },
+    'clip-write': function () { return plum.ui.clipboard.write('plum ' + Date.now()); },
+    'clip-read': function () { return plum.ui.clipboard.read(); },
+    'capture': function () { return plum.ui.capture({ mode: 'photo' }).then(function (h) { picked = h; return h; }); },
+    'capture-video': function () { return plum.ui.capture({ mode: 'video' }).then(function (h) { picked = h; return h; }); },
+    'haptic': function () { return plum.ui.haptic('success'); },
+    'external': function () { return plum.ui.openExternal('https://plum.im'); },
+    'bio': function () { return plum.ui.biometric.confirm('Bridge Check wants to confirm it is you'); },
+    'back': function () {
+      backOn = !backOn;
+      var native = plum.ui.nav.setBackHandler(backOn ? function () { out('ok', 'event back', 'page got the back gesture (handler on)'); } : null);
+      return { handlerOn: backOn, nativeBackSupported: native };
+    },
+    'close': function () { plum.ui.nav.close(); },
+    'open': function () { return plum.app.open('im.plum.downloader'); },
+    'pick': function () { return plum.files.openPicker({}).then(function (h) { picked = h; return h; }); },
+    'photos': function () { return plum.photos.pick({}).then(function (h) { picked = h; return h; }); },
+    'ent': function () { return plum.entitlement.get(); },
+    'ent-refresh': function () { return plum.entitlement.refresh(); },
+    // Subscribe, then make a change ourselves (save a tiny file through the
+    // picker) so a drive event must arrive; 0 means the channel is broken.
+    'events': function () {
+      var n = 0; var kinds = [];
+      var off = plum.events.subscribe([], function (ev) { n++; kinds.push(ev.kind); out('ok', 'event', ev.kind); });
+      return plum.files.saveAsPicker({ defaultName: 'bridge-check-' + Date.now() + '.txt' }).then(function (h) {
+        if (!h) { off(); throw new Error('save cancelled — no change made, nothing to observe'); }
+        return plum.files.writeBytes(h, new TextEncoder().encode('bridge check ' + new Date().toISOString()));
+      }).then(function () {
+        return new Promise(function (r) { setTimeout(function () { off(); r({ eventsAfterWrite: n, kinds: kinds }); }, 4000); });
+      });
+    },
+    'alert': function () { alert('alert ok'); var c = confirm('confirm?'); var p = prompt('prompt?', 'default'); return { confirm: c, prompt: p }; },
+    'link': function () { window.open('https://plum.im', '_blank'); }
+  };
+  document.querySelectorAll('button[data-t]').forEach(function (b) {
+    b.addEventListener('click', function () { run(b.dataset.t, actions[b.dataset.t]); });
+  });
+  run('boot capabilities', actions.caps);
+})();
+</script>
+</body>
+</html>
