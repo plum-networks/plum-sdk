@@ -34,7 +34,7 @@
   <h2>plum.ui</h2>
   <div class="grid">
     <button data-t="share-text">share text</button>
-    <button data-t="share-file">share a picked file</button>
+    <button data-t="share-file">share file (picks one if none)</button>
     <button data-t="clip-write">clipboard.write</button>
     <button data-t="clip-read">clipboard.read</button>
     <button data-t="capture">capture photo</button>
@@ -87,7 +87,14 @@
     'theme': function () { return { theme: plum.app.theme(), locale: plum.app.locale() }; },
     'user': function () { return plum.user.current(); },
     'share-text': function () { return plum.ui.share({ text: 'Bridge Check from Plum Box', url: 'https://plum.im' }); },
-    'share-file': function () { if (!picked) throw new Error('pick a file first (files.openPicker)'); return plum.ui.share({ handles: [picked] }); },
+    // Shares the last captured/picked file; opens the picker first when there is none yet.
+    'share-file': function () {
+      var ready = picked ? Promise.resolve(picked) : plum.files.openPicker({}).then(function (h) {
+        if (!h) throw new Error('nothing picked');
+        picked = h; return h;
+      });
+      return ready.then(function (h) { return plum.ui.share({ handles: [h] }).then(function () { return { shared: h.name }; }); });
+    },
     'clip-write': function () { return plum.ui.clipboard.write('plum ' + Date.now()); },
     'clip-read': function () { return plum.ui.clipboard.read(); },
     'capture': function () { return plum.ui.capture({ mode: 'photo' }).then(function (h) { picked = h; return h; }); },
