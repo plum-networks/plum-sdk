@@ -14,23 +14,29 @@
 //   status|restart|uninstall <app-id>
 //   serve [dir] [--port 4040] [--service http://127.0.0.1:8080]
 //   rotate --app-id <id> (--old <key> | --recovery <key> --old-pub <ed25519:…>) [-o rotation.json]
+//   publish [dir|.plu] [--store URL] [--token plum_pub_…] [--channel beta]   upload to Plum Store
+//   testers <app-id> [list|add <serial>|rm <serial>]      who gets the beta channel
+//   escrow (seal [-o file] | open <file>)                  passphrase-encrypted key backup for the console
 //   whoami
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import * as api from './api.js';
 import { checkBundle, collectFiles, inspectPlu, resignPlu, signBundle, verifyPlu, type SignOptions } from './bundle.js';
-import { configDir, keyPath, loadCredentials, requireCredentials, saveCredentials } from './config.js';
+import { configDir, EMULATOR_BOX, keyPath, loadCredentials, requireCredentials, saveCredentials, storeCredentials } from './config.js';
+import { spawnSync } from 'node:child_process';
 import { scaffold, type Template } from './init.js';
+import { openEscrow, sealEscrow } from './escrow.js';
 import { formatPublicKey, generateKey, kid, loadKey, makeRotation, parsePublicKey, saveKey, type Rotation } from './keys.js';
 import type { Manifest, Problem } from './manifest.js';
 import { startServe } from './serve.js';
 import { readZip, type ZipEntry } from './zip.js';
 
 const VERSION = '0.1.0';
-const BOOLEAN_FLAGS = new Set(['force', 'follow', 'f', 'logs', 'watch', 'json', 'allow-host-arch', 'insecure', 'help', 'h', 'version', 'v', 'print-recovery']);
+const BOOLEAN_FLAGS = new Set(['force', 'follow', 'f', 'logs', 'watch', 'json', 'allow-host-arch', 'insecure', 'help', 'h', 'version', 'v', 'print-recovery', 'recovery-key']);
 
 interface Args {
   cmd: string;
@@ -159,11 +165,81 @@ async function cmdPair(a: Args) {
 }
 
 async function cmdLogin(a: Args) {
+  const pubTok = str(a.flags, 'publisher-token');
+  if (pubTok) {
+    if (!pubTok.startsWith('plum_pub_')) throw new UsageError('login --publisher-token <plum_pub_…>  (from developer.plum.im › CLI tokens)');
+    const prev = loadCredentials() ?? { box: '', token: '' };
+    saveCredentials({ ...prev, publisher_token: pubTok, store: (str(a.flags, 'store') || prev.store || '').replace(/\/+$/, '') || undefined });
+    console.log(`publisher token saved to ${join(configDir(), 'credentials.json')}`);
+    return;
+  }
   const box = str(a.flags, 'box');
   const token = str(a.flags, 'token');
-  if (!box || !token) throw new UsageError('login --box <url> --token <plum_pat_…>   (token needs the apps:install and apps:dev scopes)');
+  if (!box || !token) throw new UsageError('login --box <url> --token <plum_pat_…>   (token needs the apps:install and apps:dev scopes)\n       login --publisher-token <plum_pub_…> [--store <url>]');
   saveCredentials({ ...(loadCredentials() ?? {}), box: normalizeBox(box), token });
   console.log(`credentials saved for ${normalizeBox(box)}`);
+}
+
+async function cmdPublish(a: Args) {
+  const target = a.pos[0] ?? '.';
+  const channel = str(a.flags, 'channel', 'public')!;
+  if (channel !== 'public' && channel !== 'beta') throw new UsageError('publish --channel public|beta');
+  const { store, token } = storeCredentials({ store: str(a.flags, 'store'), token: str(a.flags, 'token') });
+  const { plu, manifest } = buildSigned(target, a.flags);
+  const r = await api.publish(store, token, plu, `${manifest.id}-${manifest.version}.plu`, channel);
+  console.log(`uploaded ${r.app_id} ${r.version} to ${store} (${channel}): ${r.status}${r.created_app ? ' (new app)' : ''}${r.rotated ? ', key rotation accepted' : ''}`);
+  if (channel === 'beta') console.log(`signed by ${r.publisher_kid ?? '?'}; live now for your beta boxes (plum-dev testers ${r.app_id})`);
+  else console.log(`signed by ${r.publisher_kid ?? '?'}; store countersign ${r.countersign_kind ?? 'none'} — a reviewer publishes it, you get mail either way`);
+}
+
+async function cmdTesters(a: Args) {
+  const appId = a.pos[0];
+  const verb = a.pos[1] ?? 'list';
+  if (!appId) throw new UsageError('testers <app-id> [list | add <box-serial> [--note …] | rm <box-serial>]');
+  const { store, token } = storeCredentials({ store: str(a.flags, 'store'), token: str(a.flags, 'token') });
+  if (verb === 'list') {
+    const rows = await api.testers(store, token, appId);
+    if (!rows.length) console.log(`no beta boxes for ${appId} yet — plum-dev testers ${appId} add <box-serial>`);
+    for (const t of rows) console.log(`${t.box_serial}${t.note ? '  ' + t.note : ''}`);
+    return;
+  }
+  const serial = a.pos[2];
+  if (!serial) throw new UsageError(`testers ${appId} ${verb} <box-serial>`);
+  if (verb === 'add') {
+    const t = await api.addTester(store, token, appId, serial, str(a.flags, 'note'));
+    console.log(`${t.box_serial} now receives the beta channel of ${appId}`);
+  } else if (verb === 'rm' || verb === 'remove') {
+    await api.removeTester(store, token, appId, serial);
+    console.log(`${serial} removed from ${appId} beta`);
+  } else throw new UsageError('testers <app-id> [list | add <serial> | rm <serial>]');
+}
+
+async function cmdEscrow(a: Args) {
+  const verb = a.pos[0];
+  const which = a.flags['recovery-key'] ? keyPath() + '.recovery' : keyPath();
+  if (verb === 'seal') {
+    if (!existsSync(which)) throw new Error(`${which} not found`);
+    const pass = str(a.flags, 'passphrase') ?? process.env.PLUM_ESCROW_PASSPHRASE ?? (await ask('escrow passphrase (min 8 chars, not stored anywhere): '));
+    const blob = sealEscrow(readFileSync(which), pass);
+    const out = str(a.flags, 'o') ?? str(a.flags, 'out');
+    if (out) {
+      writeFileSync(out, blob + '\n', { mode: 0o600 });
+      console.log(`${out}: escrow blob for ${basename(which)} — paste it into developer.plum.im › Signing keys › Escrow`);
+    } else console.log(blob);
+    return;
+  }
+  if (verb === 'open') {
+    const file = a.pos[1];
+    if (!file) throw new UsageError('escrow open <blob-file> [-o key-file]');
+    const pass = str(a.flags, 'passphrase') ?? process.env.PLUM_ESCROW_PASSPHRASE ?? (await ask('escrow passphrase: '));
+    const key = openEscrow(readFileSync(file, 'utf8'), pass);
+    const out = str(a.flags, 'o') ?? str(a.flags, 'out') ?? which;
+    if (existsSync(out) && !a.flags.force) throw new Error(`${out} exists; pass --force to overwrite`);
+    writeFileSync(out, key, { mode: 0o600 });
+    console.log(`restored ${out}`);
+    return;
+  }
+  throw new UsageError('escrow seal [--recovery-key] [-o file] | escrow open <blob-file> [-o key-file]');
 }
 
 async function cmdInit(a: Args) {
@@ -228,7 +304,7 @@ async function cmdInspect(a: Args) {
 }
 
 async function pushOnce(target: string, a: Args) {
-  const c = requireCredentials();
+  const c = requireCredentials(str(a.flags, 'target'));
   const { plu, manifest } = buildSigned(target, a.flags);
   const r = await api.install(c, plu, str(a.flags, 'app-id') ?? manifest.id);
   console.log(`installed ${r.app_id} ${r.version} on ${c.box}  →  ${c.box}${r.url}${r.countersign_kind ? '' : '   (developer build: signed by ' + r.publisher_kid + ', no store countersign)'}`);
@@ -269,7 +345,7 @@ async function cmdPush(a: Args) {
 async function cmdLogs(a: Args) {
   const id = a.pos[0];
   if (!id) throw new UsageError('logs <app-id> [-f]');
-  const c = requireCredentials();
+  const c = requireCredentials(str(a.flags, 'target'));
   if (a.flags.f || a.flags.follow) await api.followLogs(c, id, (l) => console.log(l));
   else for (const l of await api.logs(c, id)) console.log(l);
 }
@@ -277,20 +353,20 @@ async function cmdLogs(a: Args) {
 async function cmdStatus(a: Args) {
   const id = a.pos[0];
   if (!id) throw new UsageError('status <app-id>');
-  console.log(JSON.stringify(await api.status(requireCredentials(), id), null, 2));
+  console.log(JSON.stringify(await api.status(requireCredentials(str(a.flags, 'target')), id), null, 2));
 }
 
 async function cmdRestart(a: Args) {
   const id = a.pos[0];
   if (!id) throw new UsageError('restart <app-id>');
-  await api.restart(requireCredentials(), id);
+  await api.restart(requireCredentials(str(a.flags, 'target')), id);
   console.log(`restarted ${id}`);
 }
 
 async function cmdUninstall(a: Args) {
   const id = a.pos[0];
   if (!id) throw new UsageError('uninstall <app-id>');
-  await api.uninstall(requireCredentials(), id);
+  await api.uninstall(requireCredentials(str(a.flags, 'target')), id);
   console.log(`uninstalled ${id}`);
 }
 
@@ -329,6 +405,64 @@ async function cmdRotate(a: Args) {
   console.log(`include it in the next release: plum-dev package --rotation ${out}`);
 }
 
+// ---- emulator (plum-box-dev): a Plum Box in a container on this machine ----
+function composeFile(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), '..', 'emulator', 'docker-compose.yml');
+}
+
+function docker(args: string[], opts: { capture?: boolean } = {}): string {
+  const r = spawnSync('docker', args, { stdio: opts.capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', encoding: 'utf8' });
+  if (r.error) throw new Error(`docker is not installed or not on PATH (${r.error.message}) — install Docker Desktop, or run the core binary yourself: see emulator/README.md`);
+  if (r.status !== 0) throw new Error(`docker ${args.slice(0, 2).join(' ')} failed (exit ${r.status})`);
+  return r.stdout ?? '';
+}
+
+async function cmdEmulator(a: Args) {
+  const sub = a.pos[0] ?? 'status';
+  const name = str(a.flags, 'container', 'plum-box-dev')!;
+  switch (sub) {
+    case 'up':
+      docker(['compose', '-f', composeFile(), 'up', '-d', ...(a.flags.pull ? ['--pull', 'always'] : [])]);
+      console.log(`plum-box-dev is starting — web UI ${EMULATOR_BOX} (dev / plumbox-dev). Next: plum-dev emulator login`);
+      return;
+    case 'down':
+      docker(['compose', '-f', composeFile(), 'down', ...(a.flags.volumes ? ['-v'] : [])]);
+      return;
+    case 'logs':
+      docker(['logs', ...(a.flags.f || a.flags.follow ? ['-f'] : ['--tail', '200']), name]);
+      return;
+    case 'token': {
+      const tok = docker(['exec', name, 'cat', '/data/plum/emulator/pat.txt'], { capture: true }).trim();
+      console.log(tok);
+      return;
+    }
+    case 'login': {
+      const box = (str(a.flags, 'box') || EMULATOR_BOX).replace(/\/+$/, '');
+      let token = str(a.flags, 'token');
+      if (!token) {
+        for (let i = 0; i < 30 && !token; i++) {
+          try { token = docker(['exec', name, 'cat', '/data/plum/emulator/pat.txt'], { capture: true }).trim() || undefined; } catch { /* not up yet */ }
+          if (!token) await new Promise((r) => setTimeout(r, 1000));
+        }
+        if (!token) throw new Error('could not read the emulator token (is the container up? plum-dev emulator up); or pass --token');
+      }
+      if (!token.startsWith('plum_pat_')) throw new UsageError('emulator login --token <plum_pat_…>');
+      const prev = loadCredentials() ?? { box: '', token: '' };
+      saveCredentials({ ...prev, emulator: { box, token, logged_in_at: new Date().toISOString() } });
+      console.log(`emulator session saved (${box}). Use it with: plum-dev push --target emulator   (or PLUM_DEV_TARGET=emulator)`);
+      return;
+    }
+    case 'status': {
+      const c = loadCredentials();
+      console.log(c?.emulator ? `emulator  ${c.emulator.box}  (logged in ${c.emulator.logged_in_at ?? ''})` : 'emulator  (not logged in; plum-dev emulator login)');
+      try { console.log(docker(['ps', '--filter', `name=${name}`, '--format', '{{.Names}}  {{.Status}}  {{.Ports}}'], { capture: true }).trim() || `${name}: not running`); } catch (e) { console.log((e as Error).message); }
+      return;
+    }
+    default:
+      throw new UsageError('emulator up [--pull] | down [--volumes] | logs [-f] | token | login [--token <pat>] [--box <url>] | status');
+  }
+}
+
 async function cmdWhoami() {
   const c = loadCredentials();
   console.log(`config     ${configDir()}`);
@@ -338,6 +472,9 @@ async function cmdWhoami() {
   } else console.log('publisher  (no key; run plum-dev keygen)');
   if (c) console.log(`box        ${c.box}${c.namespace ? '  namespace ' + c.namespace : ''}${c.paired_at ? '  paired ' + c.paired_at : ''}`);
   else console.log('box        (not paired; run plum-dev pair <box-url>)');
+  if (c?.emulator) console.log(`emulator   ${c.emulator.box}  (plum-dev push --target emulator)`);
+  if (c?.publisher_token) console.log(`store      ${c.store || 'https://store.plum.im'}  token ${c.publisher_token.slice(0, 17)}…`);
+  else console.log('store      (no publisher token; plum-dev login --publisher-token <plum_pub_…>)');
 }
 
 const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on your own box
@@ -350,14 +487,18 @@ const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on y
   package [dir] [-o out.plu] [--rotation rotation.json] [--no-recovery]
   sign <in.plu> [-o out.plu]
   inspect <.plu> [--json]
-  push [dir|.plu] [--app-id <id>] [--logs] [--watch]
+  push [dir|.plu] [--app-id <id>] [--logs] [--watch] [--target box|emulator]
   logs <app-id> [-f]
-  status | restart | uninstall <app-id>
+  status | restart | uninstall <app-id>        (all accept --target emulator)
+  emulator up [--pull] | down [--volumes] | logs [-f] | token | login [--token …] | status
   serve [dir] [--port 4040] [--service http://127.0.0.1:8080]
   rotate --app-id <id> (--old <key> | --recovery <key> --old-pub <pub>) [-o rotation.json]
+  publish [dir|.plu] [--store <url>] [--token <plum_pub_…>] [--channel public|beta]
+  testers <app-id> [list | add <box-serial> [--note …] | rm <box-serial>]
+  escrow seal [--recovery-key] [-o blob.txt] | escrow open <blob.txt> [-o key-file]
   whoami
 
-env: PLUM_DEV_HOME (config dir, default ~/.config/plum-dev), PLUM_DEV_KEY (publisher key path)`;
+env: PLUM_DEV_HOME (config dir, default ~/.config/plum-dev), PLUM_DEV_KEY (publisher key path), PLUM_DEV_TARGET (box|emulator)`;
 
 export async function main(argv: string[]): Promise<void> {
   const a = parseArgs(argv);
@@ -366,7 +507,8 @@ export async function main(argv: string[]): Promise<void> {
   const commands: Record<string, (a: Args) => Promise<void>> = {
     keygen: cmdKeygen, pair: cmdPair, login: cmdLogin, init: cmdInit, validate: cmdValidate, package: cmdPackage, sign: cmdSign,
     inspect: cmdInspect, push: cmdPush, logs: cmdLogs, status: cmdStatus, restart: cmdRestart, uninstall: cmdUninstall,
-    serve: cmdServe, rotate: cmdRotate, whoami: cmdWhoami,
+    serve: cmdServe, rotate: cmdRotate, whoami: cmdWhoami, publish: cmdPublish, testers: cmdTesters, escrow: cmdEscrow,
+    emulator: cmdEmulator,
   };
   const fn = commands[a.cmd];
   if (!fn) throw new UsageError(`unknown command "${a.cmd}"\n\n${HELP}`);

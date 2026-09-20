@@ -18,6 +18,13 @@ export interface Credentials {
   kid?: string;
   namespace?: string;
   paired_at?: string;
+  // Plum Store publishing (plum-dev publish): a publisher token from the
+  // developer console (developer.plum.im › CLI tokens), never the box token.
+  store?: string;
+  publisher_token?: string;
+  // The local emulator (plum-dev emulator login): kept beside the real box so
+  // `push --target emulator` never clobbers the pairing.
+  emulator?: { box: string; token: string; logged_in_at?: string };
 }
 
 export function loadCredentials(): Credentials | null {
@@ -35,10 +42,41 @@ export function saveCredentials(c: Credentials): void {
   writeFileSync(join(configDir(), 'credentials.json'), JSON.stringify(c, null, 2) + '\n', { mode: 0o600 });
 }
 
-export function requireCredentials(): Credentials {
+export const DEFAULT_STORE = 'https://store.plum.im';
+
+/** Store URL + publisher token, from flags/env first, then credentials.json. */
+export function storeCredentials(flags: { store?: string; token?: string }): { store: string; token: string } {
   const c = loadCredentials();
+  const token = flags.token || process.env.PLUM_PUBLISHER_TOKEN || c?.publisher_token || '';
+  const store = (flags.store || process.env.PLUM_STORE_URL || c?.store || DEFAULT_STORE).replace(/\/+$/, '');
+  if (!token) {
+    throw new Error(
+      'no publisher token — create one at developer.plum.im › CLI tokens, then: plum-dev login --publisher-token <plum_pub_…>  (or set PLUM_PUBLISHER_TOKEN)',
+    );
+  }
+  if (!token.startsWith('plum_pub_')) throw new Error('publisher tokens start with plum_pub_ (a box token cannot publish)');
+  return { store, token };
+}
+
+export const EMULATOR_BOX = 'http://127.0.0.1:8080';
+
+/**
+ * Which box a command talks to: the paired box (default) or the emulator
+ * (`--target emulator`, or PLUM_DEV_TARGET=emulator). The emulator entry is a
+ * Credentials view of the same shape so api.ts does not care.
+ */
+export function requireCredentials(target?: string): Credentials {
+  const c = loadCredentials();
+  const t = (target || process.env.PLUM_DEV_TARGET || 'box').toLowerCase();
+  if (t === 'emulator' || t === 'emu') {
+    if (!c?.emulator?.box || !c.emulator.token) {
+      throw new Error('no emulator session — run: plum-dev emulator up && plum-dev emulator login   (or plum-dev emulator login --token <plum_pat_…>)');
+    }
+    return { ...c, box: c.emulator.box, token: c.emulator.token };
+  }
+  if (t !== 'box') throw new Error(`--target must be "box" or "emulator", not "${target}"`);
   if (!c || !c.box || !c.token) {
-    throw new Error('not connected to a box yet — run: plum-dev pair <box-url>   (or plum-dev login --box <url> --token <plum_pat_…>)');
+    throw new Error('not connected to a box yet — run: plum-dev pair <box-url>   (or plum-dev login --box <url> --token <plum_pat_…>; for the emulator: plum-dev emulator login)');
   }
   return c;
 }

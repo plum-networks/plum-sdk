@@ -18,6 +18,35 @@ export interface Manifest {
   description?: string;
   mobile?: boolean;
   server?: { bin: string; args?: string[]; healthPath?: string; limits?: ServerLimits };
+  clients?: ClientSpec[];
+}
+
+/** One registered OAuth client of the app (a companion app). */
+export interface ClientSpec {
+  client_id: string;
+  display_name: string;
+  platform: string;
+  redirect_uris: string[];
+  scopes_allowed: string[];
+}
+
+export const CLIENT_PLATFORMS = ['ios', 'android', 'macos', 'windows', 'linux', 'web', 'cli'] as const;
+export const CLIENT_LABEL_RE = /^[a-z0-9-]{1,32}$/;
+export const MAX_CLIENTS = 10;
+export const MAX_CLIENT_REDIRECTS = 8;
+/** Scopes a client may be registered for; read/write are aliases of files:read / files:read+files:write. */
+export const OAUTH_SCOPES = ['files:read', 'files:write', 'user:profile', 'read', 'write'] as const;
+
+/** RFC 8252 native redirect target: custom scheme with a host/opaque part, or http loopback (any port). */
+export function isNativeRedirect(uri: string): boolean {
+  if (!uri || uri.length > 512) return false;
+  let u: URL;
+  try { u = new URL(uri); } catch { return false; }
+  const scheme = u.protocol.replace(/:$/, '').toLowerCase();
+  if (scheme === 'http') return ['127.0.0.1', '[::1]', 'localhost'].includes(u.hostname.toLowerCase());
+  if (['https', 'ftp', 'ws', 'wss', ''].includes(scheme)) return false;
+  // A custom scheme must deep-link somewhere: "myapp://cb" or "com.example.app:/oauth".
+  return uri.length > scheme.length + 1;
 }
 
 export const ALLOWED_PERMISSIONS = ['files:read', 'files:write', 'user:profile', 'service:call'] as const;
@@ -98,6 +127,34 @@ export function validateManifest(raw: Buffer, exists?: (rel: string) => boolean)
         if (l.cpu !== undefined && (l.cpu < 0 || l.cpu > 400)) err(`server.limits.cpu ${l.cpu} out of range (0..400)`);
         if (l.pids !== undefined && (l.pids < 0 || l.pids > 1024)) err(`server.limits.pids ${l.pids} out of range (0..1024)`);
       }
+    }
+  }
+  if (m.clients !== undefined) {
+    if (!Array.isArray(m.clients)) err('clients must be an array');
+    else {
+      if (m.clients.length > MAX_CLIENTS) err(`clients: at most ${MAX_CLIENTS} entries`);
+      const seen = new Set<string>();
+      m.clients.forEach((c, i) => {
+        const at = `clients[${i}]`;
+        if (typeof c !== 'object' || c === null) { err(`${at} must be an object`); return; }
+        const prefix = `${m.id}:`;
+        if (typeof c.client_id !== 'string' || !c.client_id.startsWith(prefix) || !CLIENT_LABEL_RE.test(c.client_id.slice(prefix.length))) {
+          err(`${at}.client_id must be "${prefix}<label>" with label [a-z0-9-]{1,32}`);
+        } else if (seen.has(c.client_id)) err(`${at}.client_id "${c.client_id}" repeated`);
+        else seen.add(c.client_id);
+        if (typeof c.display_name !== 'string' || !c.display_name.trim() || c.display_name.length > 80) err(`${at}.display_name: 1..80 characters`);
+        if (!(CLIENT_PLATFORMS as readonly string[]).includes(c.platform)) err(`${at}.platform must be one of ${CLIENT_PLATFORMS.join(', ')}`);
+        if (!Array.isArray(c.redirect_uris) || c.redirect_uris.length === 0 || c.redirect_uris.length > MAX_CLIENT_REDIRECTS) err(`${at}.redirect_uris: 1..${MAX_CLIENT_REDIRECTS} entries`);
+        else for (const u of c.redirect_uris) if (!isNativeRedirect(String(u))) err(`${at}.redirect_uris: "${u}" is not a native redirect target (custom scheme or http loopback; https is never allowed)`);
+        if (!Array.isArray(c.scopes_allowed) || c.scopes_allowed.length === 0 || c.scopes_allowed.length > 8) err(`${at}.scopes_allowed: 1..8 entries`);
+        else for (const sc of c.scopes_allowed) {
+          const s = String(sc).trim().toLowerCase();
+          if ((OAUTH_SCOPES as readonly string[]).includes(s)) continue;
+          if (s === `service:call:${m.id}`) continue;
+          if (s.startsWith('service:call:')) err(`${at}.scopes_allowed: "${s}" names another app's service (only service:call:${m.id})`);
+          else err(`${at}.scopes_allowed: unknown scope "${s}" (files:read, files:write, user:profile, service:call:${m.id})`);
+        }
+      });
     }
   }
   return { manifest: m, problems };

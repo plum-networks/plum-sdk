@@ -14,7 +14,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "emulator"
   ],
   "scripts": {
     "build": "tsup src/cli.ts --format esm --target node18 --clean && cp ../../src/plum-sdk-mock.js dist/plum-sdk-mock.js",

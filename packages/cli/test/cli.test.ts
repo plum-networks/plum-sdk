@@ -132,3 +132,48 @@ describe('plum-dev against a fake box', () => {
     expect(seen.filter((s) => s.url.startsWith('/api/apps/dev.tester.hello/')).every((s) => s.headers.authorization === `Bearer ${TOKEN}`)).toBe(true);
   });
 });
+
+describe('plum-dev publish against a fake store', () => {
+  it('uploads the signed bundle with the publisher token and reports the outcome', async () => {
+    const uploads: Array<{ auth?: string; contentType?: string; size: number }> = [];
+    const storeSrv = createServer(async (req, res) => {
+      const body = await read(req);
+      if (req.url === '/v1/publisher/versions' && req.method === 'POST') {
+        uploads.push({ auth: req.headers.authorization, contentType: req.headers['content-type'], size: body.length });
+        if (req.headers.authorization !== 'Bearer plum_pub_ok') {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ detail: 'publisher token unknown or revoked' }));
+        }
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ app_id: 'dev.tester.hello', version: '0.1.0', status: 'in_review', created_app: true, publisher_kid: 'pub-x', countersign_kind: 'checks', rotated: false }));
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((r) => storeSrv.listen(0, '127.0.0.1', r));
+    const storeUrl = `http://127.0.0.1:${(storeSrv.address() as { port: number }).port}`;
+    try {
+      // A fresh, valid app (the earlier test broke work/hello's manifest on purpose).
+      const dir = join(work, 'pub');
+      await run('init', 'Hello', '--template', 'panel', '--dir', dir);
+      // Without a token: refused before any request.
+      delete process.env.PLUM_PUBLISHER_TOKEN;
+      await expect(run('publish', dir, '--store', storeUrl)).rejects.toThrow(/no publisher token/);
+      expect(uploads.length).toBe(0);
+      // A box token is not a publisher token.
+      await expect(run('publish', dir, '--store', storeUrl, '--token', 'plum_pat_nope')).rejects.toThrow(/plum_pub_/);
+      // Saved via login, then used.
+      await run('login', '--publisher-token', 'plum_pub_ok', '--store', storeUrl);
+      const out = await run('publish', dir);
+      expect(out).toContain('uploaded dev.tester.hello 0.1.0');
+      expect(out).toContain('in_review');
+      expect(uploads[0]!.auth).toBe('Bearer plum_pub_ok');
+      expect(uploads[0]!.contentType).toMatch(/^multipart\/form-data/);
+      expect(uploads[0]!.size).toBeGreaterThan(500);
+      // A bad token surfaces the store's error.
+      await expect(run('publish', dir, '--token', 'plum_pub_bad')).rejects.toMatchObject({ status: 401 });
+    } finally {
+      storeSrv.close();
+    }
+  });
+});
