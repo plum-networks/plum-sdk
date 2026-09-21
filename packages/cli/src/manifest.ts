@@ -19,6 +19,7 @@ export interface Manifest {
   mobile?: boolean;
   server?: { bin: string; args?: string[]; healthPath?: string; limits?: ServerLimits };
   clients?: ClientSpec[];
+  protocols?: ProtocolSpec[];
 }
 
 /** One registered OAuth client of the app (a companion app). */
@@ -29,6 +30,19 @@ export interface ClientSpec {
   redirect_uris: string[];
   scopes_allowed: string[];
 }
+
+/** One standard-protocol mount the app's service answers (core proxies it verbatim). */
+export interface ProtocolSpec {
+  type: string;
+  mount: string;
+}
+
+export const PROTOCOL_TYPES = ['webdav', 'caldav', 'carddav'] as const;
+export const MAX_PROTOCOLS = 4;
+/** The optional one-segment suffix of a mount, mirroring core's protocolSegmentRe. */
+export const PROTOCOL_SEGMENT_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+/** Ids core serves itself; an app may not take them (apps.ReservedAppIDs). */
+export const RESERVED_APP_IDS = ['files', 'runtime'] as const;
 
 export const CLIENT_PLATFORMS = ['ios', 'android', 'macos', 'windows', 'linux', 'web', 'cli'] as const;
 export const CLIENT_LABEL_RE = /^[a-z0-9-]{1,32}$/;
@@ -101,6 +115,7 @@ export function validateManifest(raw: Buffer, exists?: (rel: string) => boolean)
   if (!m.id) err('id is required');
   else if (!ID_RE.test(m.id)) err(`id "${m.id}" must match ${ID_RE}`);
   else if (RESERVED_PREFIXES.some((r) => m.id === r || m.id.startsWith(r + '.'))) warn(`id "${m.id}" is in a namespace reserved for Plum; the store will refuse it`);
+  if (m.id && (RESERVED_APP_IDS as readonly string[]).includes(m.id)) err(`id "${m.id}" is reserved by the box (it already serves that path)`);
   if (!m.name) err('name is required');
   if (!m.version) err('version is required');
   const entry = m.entry || 'index.html';
@@ -154,6 +169,30 @@ export function validateManifest(raw: Buffer, exists?: (rel: string) => boolean)
           if (s.startsWith('service:call:')) err(`${at}.scopes_allowed: "${s}" names another app's service (only service:call:${m.id})`);
           else err(`${at}.scopes_allowed: unknown scope "${s}" (files:read, files:write, user:profile, service:call:${m.id})`);
         }
+      });
+    }
+  }
+  if (m.protocols !== undefined) {
+    if (!Array.isArray(m.protocols)) err('protocols must be an array');
+    else if (m.protocols.length > 0) {
+      if (m.protocols.length > MAX_PROTOCOLS) err(`protocols: at most ${MAX_PROTOCOLS} mounts`);
+      if (!m.server) err('protocols requires server');
+      if (!(m.permissions ?? []).includes('service:call')) err('protocols requires the "service:call" permission');
+      const base = `/dav/${m.id}/`;
+      const mounted = new Set<string>();
+      m.protocols.forEach((pr, i) => {
+        const at = `protocols[${i}]`;
+        if (typeof pr !== 'object' || pr === null) { err(`${at} must be an object`); return; }
+        if (!(PROTOCOL_TYPES as readonly string[]).includes(pr.type)) err(`${at}.type must be one of ${PROTOCOL_TYPES.join(', ')}`);
+        const mount = typeof pr.mount === 'string' ? pr.mount.trim() : '';
+        if (mount !== base) {
+          const rest = mount.startsWith(base) ? mount.slice(base.length) : null;
+          if (rest === null || !rest.endsWith('/') || !PROTOCOL_SEGMENT_RE.test(rest.slice(0, -1))) {
+            err(`${at}.mount "${pr.mount}" must be "${base}" or "${base}" plus one [a-z0-9._-] segment`);
+          }
+        }
+        if (mounted.has(mount)) err(`${at}.mount "${mount}" repeated`);
+        else mounted.add(mount);
       });
     }
   }
