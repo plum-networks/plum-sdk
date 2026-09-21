@@ -29,14 +29,17 @@ a box), or install with npm and let your bundler copy them.
 
 | tag | mirrors (iOS / Android) | attributes | events |
 |---|---|---|---|
-| `plum-top-bar` | navigation bar / `FrostedTopBar` | `title`, `subtitle`, `back`, `left`; slot `actions` | `plum-back` |
+| `plum-top-bar` | navigation bar / `FrostedTopBar` | `title`, `subtitle`, `back`, `left`; slots `leading`/`actions` | `plum-back` |
 | `plum-button` | `PlumButton` / `Buttons.kt` | `variant` = primary (default) · ghost · quiet · danger, `size="small"`, `block`, `disabled`, `loading`, `action` | `plum-action` |
-| `plum-field` | `UnderlineField` | `label`, `placeholder`, `value`, `type`, `hint`, `error`, `disabled`; slots `leading`/`trailing` | `plum-change`, `plum-commit`, `plum-submit` |
+| `plum-field` | `UnderlineField` | `label`, `placeholder`, `value`, `type`, `hint`, `error`, `disabled`, `aria-label`; slots `leading`/`trailing` | `plum-change`, `plum-commit`, `plum-submit` |
 | `plum-segmented` | `SegmentedToggle` | `value`; children `<button value=…>` | `plum-change` |
 | `plum-chip` | `FillChip` | `selected`, `toggle`, `tone` = live · review · reject, `value`, `disabled` | `plum-change` |
 | `plum-list` + `plum-row` | `GroupedList` / `ListRow` | list: `header`, `flush`; row: `title`, `subtitle`, `value`, `chevron`, `action`, `disabled`, `no-lead`; slots `leading`/`trailing` | `plum-action` |
-| `plum-sheet` | `PlumBottomSheet` | `open`, `title`; methods `open()` / `close()`; Esc and scrim close | `plum-close` |
+| `plum-sheet` | `PlumBottomSheet` | `open`, `title`; methods `open()` / `close()` (close is idempotent); Esc and scrim close | `plum-close` |
 | `plum-empty` | `EditorialEmpty` | `mark`, `title`, `subtitle`; default slot for a button | — |
+
+The input a `plum-field` wraps lives in the shadow root, so it takes its accessible name from
+`aria-label`, else `label`, else `placeholder` — set one of the three.
 
 ## Theme
 
