@@ -98,8 +98,13 @@ class PlumTopBar extends PlumElement {
       .back { display: none; width: var(--plum-min-tap); height: var(--plum-min-tap); border: 0; background: none; cursor: pointer; border-radius: 50%; align-items: center; justify-content: center; }
       :host([back]) .back { display: inline-flex; }
       .back svg { width: 20px; height: 20px; }
+      /* display:contents so an unused leading slot leaves no box — an empty
+         wrapper would still take the .bar flex gap and indent the title. */
+      .lead { display: contents; }
+      ::slotted([slot="leading"]) { display: inline-flex; align-items: center; margin-left: 6px; color: var(--plum-faint); }
       .titles { flex: 1; min-width: 0; padding: 0 8px; text-align: center; }
       :host([back]) .titles, :host([left]) .titles { text-align: left; padding-left: 0; }
+      :host([left]) .lead + .titles { padding-left: 8px; }
       .t { font: var(--plum-text-title); font-size: 16.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .s { font: var(--plum-text-mono); color: var(--plum-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .s:empty { display: none; }
@@ -107,6 +112,7 @@ class PlumTopBar extends PlumElement {
     `, `
       <div class="bar" part="bar">
         <button class="back" part="back" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <span class="lead" part="leading"><slot name="leading"></slot></span>
         <div class="titles"><div class="t" part="title"></div><div class="s" part="subtitle"></div></div>
         <div class="actions"><slot name="actions"></slot></div>
       </div>`);
@@ -203,7 +209,14 @@ class PlumSheet extends PlumElement {
     if (name === "title") this.$(".t").textContent = this.getAttribute("title") || "";
   }
   open() { this.setAttribute("open", ""); }
-  close() { this.removeAttribute("open"); emit(this, "plum-close"); }
+  // Idempotent: a consumer that cleans up on `plum-close` and calls close()
+  // from its own Cancel button would otherwise re-enter (and the scrim, Esc
+  // and Cancel would each fire a second, spurious close).
+  close() {
+    if (!this.hasAttribute("open")) return;
+    this.removeAttribute("open");
+    emit(this, "plum-close");
+  }
 }
 define("sheet", PlumSheet);
 
@@ -268,7 +281,7 @@ define("chip", PlumChip);
 
 /* ---------------------------------------------------------------- field */
 class PlumField extends PlumElement {
-  static get observedAttributes() { return ["label", "placeholder", "value", "type", "error", "hint", "disabled"]; }
+  static get observedAttributes() { return ["label", "placeholder", "value", "type", "error", "hint", "disabled", "aria-label"]; }
   static get formAssociated() { return true; }
   constructor() {
     super(html`
@@ -297,6 +310,14 @@ class PlumField extends PlumElement {
     input.disabled = this.hasAttribute("disabled");
     if (name === "value") input.value = this.getAttribute("value") || "";
     this.$(".msg").textContent = this.getAttribute("error") || this.getAttribute("hint") || "";
+    // The <label> is a sibling of the input and the input lives in the shadow
+    // root, so nothing associates the two: without this the control is
+    // unnamed to a screen reader even when a visible label is set. An explicit
+    // aria-label wins, for the common one-line toolbar field that shows only a
+    // placeholder.
+    const name_ = this.getAttribute("aria-label") || this.getAttribute("label") || this.getAttribute("placeholder") || "";
+    if (name_) input.setAttribute("aria-label", name_);
+    else input.removeAttribute("aria-label");
   }
   get value() { return this.$("input").value; }
   set value(v) { this.$("input").value = v == null ? "" : String(v); }
