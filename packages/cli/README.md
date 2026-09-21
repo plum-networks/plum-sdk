@@ -10,7 +10,7 @@ npm i -g @plumbox/dev
 plum-dev keygen                      # once: publisher key + recovery key
 plum-dev pair https://pb-1234.plumbox.me   # the owner reads a 6-digit code off the box
 plum-dev init hello --template server-go
-cd hello && ./build.sh
+cd hello && plum-dev build           # cross-compile the service for the box (arm64)
 plum-dev push --logs                 # sign → install → follow the service log
 ```
 
@@ -26,7 +26,8 @@ plum-dev push --logs                 # sign → install → follow the service l
 | `package [dir] [-o out.plu] [--rotation r.json] [--no-recovery]` | Deterministic zip (sorted entries, fixed timestamps) with `META/MANIFEST.sha256`, `META/publisher.pub`, `META/publisher.sig`, optional `META/recovery.pub` and `META/rotation.json`. Prints the sha256. |
 | `sign <in.plu> [-o out.plu]` | Re-signs an existing bundle; the previous `META/` is replaced. |
 | `inspect <.plu> [--json]` | Publisher, recovery key, covered files, whether the signature verifies. |
-| `push [dir\|.plu] [--logs] [--watch]` | `validate` + `package` in memory, then `POST /api/apps/install` on the paired box. `--watch` re-pushes on change, `--logs` follows the service log afterwards. |
+| `build [dir] [--template go\|rust\|zig\|dockerfile]` | Cross-builds the service to the path `manifest.server.bin` names, for linux/arm64. Go needs no Docker (`CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w'`); other toolchains go through `docker buildx build --platform linux/arm64` with a generated Dockerfile (or your own `Dockerfile.plum`, final stage holding the binary at `/svc`). The result must be a static arm64 ELF or it is refused, naming what it found. |
+| `push [dir\|.plu] [--logs] [--watch] [--build\|--no-build]` | `validate` + `package` in memory, then `POST /api/apps/install` on the paired box. Builds the service first when `server.bin` is not there yet (`--build` forces, `--no-build` skips). `--watch` re-pushes on change, `--logs` follows the service log afterwards. |
 | `logs <app-id> [-f]` | Retained service stdout/stderr; `-f` streams (SSE). |
 | `status`, `restart`, `uninstall <app-id>` | What they say. |
 | `serve [dir] [--port 4040] [--service URL]` | Runs a panel on your laptop: static files under `/apps/<id>/`, the mock SDK at `/apps/runtime/plum-sdk.js`, and `/apps/<id>/svc/*` proxied to `--service` with the same `X-Plum-*` identity headers the box injects. |
@@ -57,22 +58,43 @@ Errors come back as `signature_invalid`, `publisher_untrusted`,
 
 - `PLUM_DEV_HOME` — config directory (default `~/.config/plum-dev`).
 - `PLUM_DEV_KEY` — publisher key path.
+- `PLUM_DEV_TARGET` — `box` (default) or `emulator`.
+- `PLUM_DEV_EMULATOR_MODE` — `docker` or `native`, instead of probing for a daemon.
+- `PLUM_DEV_CACHE` — downloaded emulator cores (default `~/.cache/plum-dev/emulator`, `$XDG_CACHE_HOME` respected).
+- `PLUM_DEV_DATA` — emulator data, log and pidfile (default `~/.local/share/plum-dev/emulator`, `$XDG_DATA_HOME` respected).
 - Node ≥ 18. No runtime dependencies.
 
 The signing format is shared with the box's Go implementation (`cmd/plu` in
 plum-box-core); the test suite cross-checks against it when that tool is on
 the machine.
 
-## Emulator (no box needed)
+## Emulator (no box, no Docker needed)
 
-`plum-box-dev` is the Plum Box in a container (the closed core binary, like an Android system image):
+`plum-box-dev` is the Plum Box on your machine — the closed core binary, like an Android system
+image. It runs in either of two modes and the same commands drive both:
 
 ```
-plum-dev emulator up            # docker compose up -d  (ghcr.io/plum-networks/plum-box-dev)
-plum-dev emulator login         # reads the developer token out of the container
+plum-dev emulator up            # native unless a Docker daemon answers
+plum-dev emulator login         # reads the seeded developer token
 plum-dev push --target emulator # or: PLUM_DEV_TARGET=emulator
 ```
 
-Web UI at http://localhost:8080 (`dev` / `plumbox-dev`). Unsigned bundles and host-architecture binaries are
-accepted there and only there; `plum-dev validate` still warns about anything the store would refuse.
-`emulator logs -f`, `emulator token`, `emulator down --volumes` (reset). Details: the core repo's `emulator/README.md`.
+- **native** (no Docker): downloads the prebuilt core for your platform from the public
+  `plum-networks/plum-sdk` releases (tag `emulator-<core version>`, asset
+  `plum-server-<goos>-<goarch>`), **verifies its SHA-256 against the release's `SHA256SUMS`
+  before the first run**, caches it under `~/.cache/plum-dev/emulator/<version>/`, and runs it as
+  a child process with `PLUMBOX_EMULATOR=1`. Data, logfile and pidfile live under
+  `~/.local/share/plum-dev/emulator/`. Published platforms: linux-amd64, linux-arm64,
+  darwin-amd64, darwin-arm64 — macOS included, so an Apple-silicon laptop needs no Docker Desktop.
+  Anything else is told so by name and pointed at Docker mode.
+- **docker**: `docker compose` with the shipped `emulator/docker-compose.yml`
+  (`ghcr.io/plum-networks/plum-box-dev`).
+
+`up` chooses Docker only when a daemon actually answers; `--native` and `--docker` force one, and
+`--core-version <x.y.z>` pins a core. Every other subcommand (`down`, `logs -f`, `token`, `login`,
+`status`) follows the mode `up` recorded, so nothing waits on a daemon that has gone away.
+`down` is SIGTERM then SIGKILL after 5s; `down --volumes` resets the box.
+
+Web UI at http://127.0.0.1:8080 (`dev` / `plumbox-dev`). Unsigned bundles and host-architecture
+binaries are accepted there and only there; `plum-dev validate` still warns about anything the
+store would refuse. Details: the emulator page in the developer docs.

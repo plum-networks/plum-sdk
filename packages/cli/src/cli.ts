@@ -9,6 +9,7 @@
 //   package [dir] [-o out.plu]   deterministic, signed .plu
 //   sign <in.plu> [-o out.plu]   re-sign an existing bundle with your key
 //   inspect <.plu>               who signed it, what it covers, does it verify
+//   build [dir]                  cross-build the service for the box (arm64)
 //   push [dir|.plu] [--logs] [--watch]  sign + install on the paired box
 //   logs <app-id> [-f]           service stdout/stderr (follow with -f)
 //   status|restart|uninstall <app-id>
@@ -21,13 +22,13 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { basename, join, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import * as api from './api.js';
+import { build as buildApp, BUILD_KINDS, type BuildKind } from './build.js';
 import { checkBundle, collectFiles, inspectPlu, resignPlu, signBundle, verifyPlu, type SignOptions } from './bundle.js';
 import { configDir, EMULATOR_BOX, keyPath, loadCredentials, requireCredentials, saveCredentials, storeCredentials } from './config.js';
-import { spawnSync } from 'node:child_process';
+import * as emu from './emulator.js';
 import { scaffold, type Template } from './init.js';
 import { openEscrow, sealEscrow } from './escrow.js';
 import { formatPublicKey, generateKey, kid, loadKey, makeRotation, parsePublicKey, saveKey, type Rotation } from './keys.js';
@@ -36,7 +37,10 @@ import { startServe } from './serve.js';
 import { readZip, type ZipEntry } from './zip.js';
 
 const VERSION = '0.1.0';
-const BOOLEAN_FLAGS = new Set(['force', 'follow', 'f', 'logs', 'watch', 'json', 'allow-host-arch', 'insecure', 'help', 'h', 'version', 'v', 'print-recovery', 'recovery-key']);
+const BOOLEAN_FLAGS = new Set([
+  'force', 'follow', 'f', 'logs', 'watch', 'json', 'allow-host-arch', 'insecure', 'help', 'h', 'version', 'v',
+  'print-recovery', 'recovery-key', 'native', 'docker', 'no-docker', 'build', 'no-build', 'pull', 'volumes',
+]);
 
 interface Args {
   cmd: string;
@@ -254,7 +258,7 @@ async function cmdInit(a: Args) {
   const files = scaffold(dir, name, id, template);
   console.log(`created ${dir} (${id}, template ${template}):`);
   for (const f of files) console.log(`  ${f}`);
-  console.log(`\nnext: cd ${basename(dir)} && plum-dev serve${template === 'server-go' ? '   (and ./build.sh before plum-dev push)' : ''}`);
+  console.log(`\nnext: cd ${basename(dir)} && plum-dev serve${template === 'server-go' ? '   (and plum-dev build before plum-dev push)' : ''}`);
 }
 
 async function cmdValidate(a: Args) {
@@ -303,8 +307,50 @@ async function cmdInspect(a: Args) {
   for (const f of info.files) console.log(`  ${f}`);
 }
 
+function mib(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function cmdBuild(a: Args) {
+  const dir = a.pos[0] ?? '.';
+  const kind = str(a.flags, 'template') as BuildKind | undefined;
+  if (kind && !BUILD_KINDS.includes(kind)) throw new UsageError(`build [dir] --template ${BUILD_KINDS.join('|')}`);
+  const r = await buildApp({
+    dir,
+    kind,
+    dockerfile: str(a.flags, 'dockerfile'),
+    docker: a.flags['no-docker'] ? false : undefined,
+    log: (l) => console.log(l),
+  });
+  console.log(`  ✓ ${relative(process.cwd(), r.out) || basename(r.out)}  ${mib(r.bytes)}  static arm64 ELF`);
+  console.log('next: plum-dev push');
+}
+
+/**
+ * A server app whose binary is not there was never built — building it is what
+ * the developer meant. `--build` forces a rebuild, `--no-build` opts out.
+ */
+async function buildForPush(target: string, a: Args): Promise<void> {
+  if (a.flags['no-build'] || !existsSync(target) || statSync(target).isFile()) return;
+  const mp = join(target, 'manifest.json');
+  if (!existsSync(mp)) return;
+  let bin: string | undefined;
+  try {
+    bin = (JSON.parse(readFileSync(mp, 'utf8')) as Manifest).server?.bin;
+  } catch {
+    return; // validate will report it
+  }
+  if (!bin) return;
+  const missing = !existsSync(join(target, bin));
+  if (!missing && !a.flags.build) return;
+  console.log(missing ? `${bin} is not built yet — building it first (--no-build to skip)` : `rebuilding ${bin}`);
+  const r = await buildApp({ dir: target, log: (l) => console.log('  ' + l) });
+  console.log(`  ✓ ${bin}  ${mib(r.bytes)}`);
+}
+
 async function pushOnce(target: string, a: Args) {
   const c = requireCredentials(str(a.flags, 'target'));
+  await buildForPush(target, a);
   const { plu, manifest } = buildSigned(target, a.flags);
   const r = await api.install(c, plu, str(a.flags, 'app-id') ?? manifest.id);
   console.log(`installed ${r.app_id} ${r.version} on ${c.box}  →  ${c.box}${r.url}${r.countersign_kind ? '' : '   (developer build: signed by ' + r.publisher_kid + ', no store countersign)'}`);
@@ -405,46 +451,82 @@ async function cmdRotate(a: Args) {
   console.log(`include it in the next release: plum-dev package --rotation ${out}`);
 }
 
-// ---- emulator (plum-box-dev): a Plum Box in a container on this machine ----
-function composeFile(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), '..', 'emulator', 'docker-compose.yml');
+// ---- emulator (plum-box-dev): a Plum Box on this machine ----
+//
+// Two modes, one command. Docker runs the published image; native downloads
+// the prebuilt core for this platform and runs it as a child process. `up`
+// picks Docker only when a daemon answers, so a developer without Docker still
+// gets a real core to push to. The other subcommands follow the mode `up`
+// recorded, so nothing depends on the daemon coming back.
+
+function emuMode(a: Args, forStart: boolean): emu.Mode {
+  return emu.chooseMode({ docker: !!a.flags.docker, native: !!a.flags.native }, forStart);
 }
 
-function docker(args: string[], opts: { capture?: boolean } = {}): string {
-  const r = spawnSync('docker', args, { stdio: opts.capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', encoding: 'utf8' });
-  if (r.error) throw new Error(`docker is not installed or not on PATH (${r.error.message}) — install Docker Desktop, or run the core binary yourself: see emulator/README.md`);
-  if (r.status !== 0) throw new Error(`docker ${args.slice(0, 2).join(' ')} failed (exit ${r.status})`);
-  return r.stdout ?? '';
+async function emuUp(a: Args, container: string) {
+  if (emuMode(a, true) === 'docker') {
+    emu.dockerCli(['compose', '-f', emu.composeFile(), 'up', '-d', ...(a.flags.pull ? ['--pull', 'always'] : [])]);
+    emu.writeState({ mode: 'docker', version: 'image', port: emu.DEFAULT_PORT, box: EMULATOR_BOX, container });
+    console.log(`plum-box-dev is starting — web UI ${EMULATOR_BOX} (dev / plumbox-dev). Next: plum-dev emulator login`);
+    return;
+  }
+  const port = Number(str(a.flags, 'port', String(emu.DEFAULT_PORT)));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new UsageError('emulator up --port <1..65535>');
+  const core = await emu.ensureBinary({ version: str(a.flags, 'core-version'), log: (l) => console.log(l) });
+  const { state, ready } = await emu.startNative({ binary: core.path, version: core.version, port });
+  console.log(`plum-box-dev is ${ready ? 'up' : 'starting'} — web UI ${state.box} (dev / plumbox-dev). Next: plum-dev emulator login`);
+  console.log(`  native mode (no Docker), core ${core.version}: ${core.path}`);
+  console.log(`  data ${emu.dataRoot()}   log ${emu.logPath()}`);
+  if (!ready) console.log('  it has not answered on the port yet — plum-dev emulator logs -f');
 }
 
 async function cmdEmulator(a: Args) {
   const sub = a.pos[0] ?? 'status';
-  const name = str(a.flags, 'container', 'plum-box-dev')!;
+  const name = str(a.flags, 'container', emu.CONTAINER_NAME)!;
   switch (sub) {
     case 'up':
-      docker(['compose', '-f', composeFile(), 'up', '-d', ...(a.flags.pull ? ['--pull', 'always'] : [])]);
-      console.log(`plum-box-dev is starting — web UI ${EMULATOR_BOX} (dev / plumbox-dev). Next: plum-dev emulator login`);
+      await emuUp(a, name);
       return;
-    case 'down':
-      docker(['compose', '-f', composeFile(), 'down', ...(a.flags.volumes ? ['-v'] : [])]);
-      return;
-    case 'logs':
-      docker(['logs', ...(a.flags.f || a.flags.follow ? ['-f'] : ['--tail', '200']), name]);
-      return;
-    case 'token': {
-      const tok = docker(['exec', name, 'cat', '/data/plum/emulator/pat.txt'], { capture: true }).trim();
-      console.log(tok);
+    case 'down': {
+      if (emuMode(a, false) === 'docker') {
+        emu.dockerCli(['compose', '-f', emu.composeFile(), 'down', ...(a.flags.volumes ? ['-v'] : [])]);
+        return;
+      }
+      const how = await emu.stopNative();
+      console.log(how === 'not running' ? 'the emulator is not running' : `emulator ${how}`);
+      if (a.flags.volumes) {
+        emu.resetNative();
+        console.log(`removed ${emu.dataRoot()}`);
+      }
       return;
     }
+    case 'logs': {
+      const follow = !!(a.flags.f || a.flags.follow);
+      if (emuMode(a, false) === 'docker') {
+        emu.dockerCli(['logs', ...(follow ? ['-f'] : ['--tail', '200']), name]);
+        return;
+      }
+      const file = emu.logPath();
+      if (!existsSync(file)) throw new Error(`${file}: no log yet — plum-dev emulator up`);
+      const t = emu.tail(file, 200);
+      if (t) console.log(t);
+      if (follow) await emu.followLog(file, (l) => console.log(l));
+      return;
+    }
+    case 'token':
+      console.log(emu.readToken(emuMode(a, false), name));
+      return;
     case 'login': {
-      const box = (str(a.flags, 'box') || EMULATOR_BOX).replace(/\/+$/, '');
+      const mode = emuMode(a, false);
+      const st = emu.readState();
+      const box = (str(a.flags, 'box') || st?.box || EMULATOR_BOX).replace(/\/+$/, '');
       let token = str(a.flags, 'token');
       if (!token) {
         for (let i = 0; i < 30 && !token; i++) {
-          try { token = docker(['exec', name, 'cat', '/data/plum/emulator/pat.txt'], { capture: true }).trim() || undefined; } catch { /* not up yet */ }
+          try { token = emu.readToken(mode, name) || undefined; } catch { /* not up yet */ }
           if (!token) await new Promise((r) => setTimeout(r, 1000));
         }
-        if (!token) throw new Error('could not read the emulator token (is the container up? plum-dev emulator up); or pass --token');
+        if (!token) throw new Error('could not read the emulator token (is it up? plum-dev emulator up); or pass --token');
       }
       if (!token.startsWith('plum_pat_')) throw new UsageError('emulator login --token <plum_pat_…>');
       const prev = loadCredentials() ?? { box: '', token: '' };
@@ -455,11 +537,18 @@ async function cmdEmulator(a: Args) {
     case 'status': {
       const c = loadCredentials();
       console.log(c?.emulator ? `emulator  ${c.emulator.box}  (logged in ${c.emulator.logged_in_at ?? ''})` : 'emulator  (not logged in; plum-dev emulator login)');
-      try { console.log(docker(['ps', '--filter', `name=${name}`, '--format', '{{.Names}}  {{.Status}}  {{.Ports}}'], { capture: true }).trim() || `${name}: not running`); } catch (e) { console.log((e as Error).message); }
+      const st = emu.readState();
+      if (emuMode(a, false) === 'native') {
+        const run = emu.nativeRunning();
+        if (run) console.log(`${emu.CONTAINER_NAME}  native  core ${run.version}  pid ${run.pid}  ${run.box}  (up since ${run.started_at ?? '?'})`);
+        else console.log(`${emu.CONTAINER_NAME}  native  not running${st?.version && st.mode === 'native' ? `  (last core ${st.version})` : ''}`);
+        return;
+      }
+      try { console.log(emu.dockerCli(['ps', '--filter', `name=${name}`, '--format', '{{.Names}}  {{.Status}}  {{.Ports}}'], { capture: true }).trim() || `${name}: not running`); } catch (e) { console.log((e as Error).message); }
       return;
     }
     default:
-      throw new UsageError('emulator up [--pull] | down [--volumes] | logs [-f] | token | login [--token <pat>] [--box <url>] | status');
+      throw new UsageError('emulator up [--native|--docker] [--core-version x.y.z] [--port 8080] [--pull] | down [--volumes] | logs [-f] | token | login [--token <pat>] [--box <url>] | status');
   }
 }
 
@@ -487,10 +576,12 @@ const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on y
   package [dir] [-o out.plu] [--rotation rotation.json] [--no-recovery]
   sign <in.plu> [-o out.plu]
   inspect <.plu> [--json]
-  push [dir|.plu] [--app-id <id>] [--logs] [--watch] [--target box|emulator]
+  build [dir] [--template go|rust|zig|dockerfile] [--dockerfile <path>]
+  push [dir|.plu] [--app-id <id>] [--logs] [--watch] [--build|--no-build] [--target box|emulator]
   logs <app-id> [-f]
   status | restart | uninstall <app-id>        (all accept --target emulator)
-  emulator up [--pull] | down [--volumes] | logs [-f] | token | login [--token …] | status
+  emulator up [--native|--docker] [--core-version x.y.z] [--port 8080] [--pull]
+           | down [--volumes] | logs [-f] | token | login [--token …] | status
   serve [dir] [--port 4040] [--service http://127.0.0.1:8080]
   rotate --app-id <id> (--old <key> | --recovery <key> --old-pub <pub>) [-o rotation.json]
   publish [dir|.plu] [--store <url>] [--token <plum_pub_…>] [--channel public|beta]
@@ -498,7 +589,9 @@ const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on y
   escrow seal [--recovery-key] [-o blob.txt] | escrow open <blob.txt> [-o key-file]
   whoami
 
-env: PLUM_DEV_HOME (config dir, default ~/.config/plum-dev), PLUM_DEV_KEY (publisher key path), PLUM_DEV_TARGET (box|emulator)`;
+env: PLUM_DEV_HOME (config dir, default ~/.config/plum-dev), PLUM_DEV_KEY (publisher key path), PLUM_DEV_TARGET (box|emulator),
+     PLUM_DEV_EMULATOR_MODE (docker|native), PLUM_DEV_CACHE (downloaded cores, default ~/.cache/plum-dev/emulator),
+     PLUM_DEV_DATA (emulator data, default ~/.local/share/plum-dev/emulator)`;
 
 export async function main(argv: string[]): Promise<void> {
   const a = parseArgs(argv);
@@ -506,7 +599,7 @@ export async function main(argv: string[]): Promise<void> {
   if (!a.cmd || a.flags.help || a.flags.h || a.cmd === 'help') { console.log(HELP); return; }
   const commands: Record<string, (a: Args) => Promise<void>> = {
     keygen: cmdKeygen, pair: cmdPair, login: cmdLogin, init: cmdInit, validate: cmdValidate, package: cmdPackage, sign: cmdSign,
-    inspect: cmdInspect, push: cmdPush, logs: cmdLogs, status: cmdStatus, restart: cmdRestart, uninstall: cmdUninstall,
+    inspect: cmdInspect, build: cmdBuild, push: cmdPush, logs: cmdLogs, status: cmdStatus, restart: cmdRestart, uninstall: cmdUninstall,
     serve: cmdServe, rotate: cmdRotate, whoami: cmdWhoami, publish: cmdPublish, testers: cmdTesters, escrow: cmdEscrow,
     emulator: cmdEmulator,
   };
