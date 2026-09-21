@@ -166,6 +166,63 @@
           }
         }
       }
+    },
+    "protocols": {
+      "type": "array",
+      "maxItems": 4,
+      "uniqueItems": true,
+      "description": "Standard-protocol mounts the app's service answers. Core proxies these paths to the service verbatim — the request path, Destination header and body hrefs all arrive unchanged — and adds X-Plum-Mount. Requires server and the service:call permission. Authentication is a PAT scoped service:call:<manifest.id>, over Bearer or as a Basic password; a session cookie is never accepted on a mount.",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "mount"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "webdav",
+              "caldav",
+              "carddav"
+            ]
+          },
+          "mount": {
+            "type": "string",
+            "pattern": "^/dav/[a-z0-9][a-z0-9._-]{0,127}/([a-z0-9][a-z0-9._-]{0,63}/)?$",
+            "description": "Exactly \"/dav/<manifest.id>/\", or that plus ONE more [a-z0-9._-] segment (e.g. /dav/dev.alice.cal/calendars/). JSON Schema cannot compare one property against another, so this pattern only checks the shape; that the id in the path is THIS manifest's id — which is what makes squatting another app's mount, or the box's own /dav/files/, impossible — is enforced by plum-box-core (apps.validateProtocols) and by the store (app/checks.py). Two entries may not share a mount."
+          }
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "protocols"
+        ],
+        "properties": {
+          "protocols": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "server",
+          "permissions"
+        ],
+        "properties": {
+          "permissions": {
+            "contains": {
+              "const": "service:call"
+            }
+          }
+        },
+        "description": "A mount with no service behind it is a 503 generator, and service:call is the permission the owner sees and can switch off."
+      }
+    }
+  ]
 }
