@@ -114,7 +114,13 @@ describe("bearer auth + errors", () => {
       textResponse(409, `{"error":"version_mismatch","message":"nope"}`),
     );
     const client = new PlumClient({ baseUrl: "https://x", token: "t", http: adapter });
-    const err = await client.auth.me().catch((e) => e as PlumApiError);
+    // .then(throw, cast) rather than .catch(cast): .catch widens the promise to
+    // "the resolved value or the error", and a call that unexpectedly succeeds
+    // should say so instead of failing on a missing property.
+    const err = await client.auth.me().then(
+      (): never => { throw new Error("auth.me() resolved; it was supposed to reject"); },
+      (e: unknown) => e as PlumApiError,
+    );
     expect(err).toBeInstanceOf(PlumApiError);
     expect(err.code).toBe("version_mismatch");
     expect(err.message).toBe("nope");

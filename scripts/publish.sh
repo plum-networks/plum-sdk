@@ -74,6 +74,7 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 npm ci
 npm run build --workspaces
+npm run typecheck --workspaces --if-present
 npm test --workspaces
 
 published=()

@@ -43,8 +43,9 @@ dependents.
    ```bash
    bash scripts/publish.sh --dry-run
    ```
-   This runs `npm ci`, `npm run build --workspaces`, `npm test --workspaces` and
-   `npm pack --dry-run` for every package, and prints what it *would* publish.
+   This runs `npm ci`, `npm run build --workspaces`, `npm run typecheck
+   --workspaces --if-present`, `npm test --workspaces` and `npm pack --dry-run`
+   for every package, and prints what it *would* publish.
    Read the pack file lists: anything that is not `dist/`, `src/` (for
    `@plumbox/ui` and `@plumbox/manifest`), `README.md`, `LICENSE` and
    `package.json` is a mistake in the `files` whitelist.
@@ -58,6 +59,12 @@ dependents.
    git tag dev-0.1.0        # <package-dir-name>-<version>; the script prints these
    git push --tags
    ```
+
+`typecheck` is `tsc --noEmit` and is separate from `build` on purpose: tsup
+transpiles without type-checking, and vitest does the same, so a package can
+build green and test green while `tsc` has four errors in it. That is exactly
+what was true of `@plumbox/dev` and `@plumbox/client` until the release prep,
+and it is why the check runs before anything is published.
 
 ## Why the script is idempotent
 
