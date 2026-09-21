@@ -1,7 +1,8 @@
 // Drives the real command entry points against a fake box that answers with
 // the exact shapes plum-box-core uses (internal/apps/{publishers,install_direct,logs}.go).
+import { spawnSync } from 'node:child_process';
 import { createServer, type IncomingMessage } from 'node:http';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -21,6 +22,7 @@ let server: ReturnType<typeof createServer>;
 const home = mkdtempSync(join(tmpdir(), 'plumdev-home-'));
 const work = mkdtempSync(join(tmpdir(), 'plumdev-work-'));
 const TOKEN = 'plum_pat_test_0123456789';
+const HAVE_GO = !spawnSync('go', ['version'], { stdio: 'ignore' }).error;
 
 function read(req: IncomingMessage): Promise<Buffer> {
   return new Promise((res) => {
@@ -122,6 +124,22 @@ describe('plum-dev against a fake box', () => {
     await expect(run('push', join(work, 'hello'))).rejects.toThrow(/error\(s\)/);
     expect(seen.length).toBe(before);
   });
+
+  it.skipIf(!HAVE_GO)('push builds the service when the manifest names a binary that is not there', async () => {
+    const dir = join(work, 'svcapp');
+    await run('init', 'Svc', '--template', 'server-go', '--dir', dir);
+    expect(existsSync(join(dir, 'svc'))).toBe(false);
+    const out = await run('push', dir);
+    expect(out).toContain('svc is not built yet');
+    expect(out).toContain('installed dev.tester.svc');
+    expect(existsSync(join(dir, 'svc'))).toBe(true);
+    // The binary went into the bundle and passed the arm64 gate on the way.
+    const inst = seen.filter((s) => s.url.startsWith('/api/apps/install')).pop()!;
+    expect(verifyPlu(inst.body).ok).toBe(true);
+    // Built once: a second push does not rebuild unless asked.
+    const again = await run('push', dir);
+    expect(again).not.toContain('not built yet');
+  }, 180_000);
 
   it('logs, logs -f, status, restart, uninstall', async () => {
     expect(await run('logs', 'dev.tester.hello')).toBe('a\nb');

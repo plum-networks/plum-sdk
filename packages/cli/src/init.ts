@@ -121,7 +121,7 @@ export function scaffold(dir: string, name: string, id: string, template: Templa
   put('manifest.json', JSON.stringify(manifest, null, 2) + '\n');
   put('index.html', indexHtml(name, template === 'server-go'));
   put('.plumignore', 'README.md\nserver/\nbuild.sh\n');
-  put('README.md', `# ${name}\n\n- \`plum-dev serve\` runs the panel on your laptop with the mock SDK.\n${template === 'server-go' ? '- `./build.sh` cross-compiles the service, then\n' : ''}- \`plum-dev push\` signs and installs it on your paired box.\n`);
+  put('README.md', `# ${name}\n\n- \`plum-dev serve\` runs the panel on your laptop with the mock SDK.\n${template === 'server-go' ? '- `plum-dev build` cross-compiles the service for the box (arm64); `./build.sh` does the same by hand.\n' : ''}- \`plum-dev push\` signs and installs it on your paired box.\n`);
   if (template === 'server-go') {
     put('server/go.mod', `module ${id.replace(/[^a-z0-9.\-]/g, '-')}/server\n\ngo 1.22\n`);
     put('server/main.go', SERVER_MAIN_GO);
