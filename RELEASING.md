@@ -22,10 +22,28 @@ dependents.
 - Node **18** or newer. Everything is built with `--target node18` and tested
   on the Node the contributor has; do not raise `engines.node` without deciding
   to drop Node 18 users.
-- `npm login` against the `plumbox` npm organisation, with **publish** rights on
-  the `@plumbox` scope. In CI use an automation token in `.npmrc`
-  (`//registry.npmjs.org/:_authToken=${NPM_TOKEN}`) instead.
-- The scope must exist and the first publish of each package must be public.
+- **The `plumbox` organisation has to exist.** It is not created by logging in:
+  an account's own scope is `@<username>`, so without the org the registry
+  answers `404 Scope not found` and nothing can be published. Create it once at
+  <https://www.npmjs.com/org/create> (name `plumbox`; the Free plan covers
+  unlimited public packages), then add the publishing account as a member with
+  publish rights. `scripts/publish.sh` checks this before it builds anything.
+- `npm login` as that member. **A login alone is not enough to publish**: npm
+  requires a second factor for writes, and a `403 … Two-factor authentication
+  or granular access token with bypass 2fa enabled is required` is what you get
+  without one. Two ways through, pick one:
+  - **Granular access token (recommended, and what CI needs anyway).** npmjs.com
+    → Access Tokens → Generate New Token → *Granular Access Token*; give it
+    read+write on the `@plumbox` scope, an expiry you are happy with, and tick
+    **Bypass two-factor authentication**. Put it in `~/.npmrc` as
+    `//registry.npmjs.org/:_authToken=<token>` (or `NPM_TOKEN` in CI). The
+    script then runs unattended.
+  - **2FA on the account plus a code per publish.** Enable 2FA
+    (`npm profile enable-2fa auth-and-writes`), then
+    `bash scripts/publish.sh --otp 123456`. Note that a code is short-lived and
+    there are five packages, so expect to re-run the script for the stragglers;
+    it skips whatever already went out.
+- The first publish of each package must be public.
   Every `package.json` here carries `"publishConfig": {"access": "public"}`, so
   `npm publish` does not need `--access public` on the command line — the script
   passes it anyway, because a missing `publishConfig` is a silent private

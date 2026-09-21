@@ -4,6 +4,7 @@
 #   bash scripts/publish.sh              # publish everything not already on npm
 #   bash scripts/publish.sh --dry-run    # say what it would do, publish nothing
 #   bash scripts/publish.sh @plumbox/ui  # one package (and only that one)
+#   bash scripts/publish.sh --otp 123456 # pass a 2FA code (see RELEASING.md)
 #
 # Idempotent by construction: for each package it asks npm whether that exact
 # name@version already exists and skips it if so. Re-running after a partial
@@ -29,14 +30,19 @@ ORDER=(
 )
 
 DRY_RUN=0
+OTP=""
 ONLY=()
-for arg in "$@"; do
+while [ $# -gt 0 ]; do
+  arg="$1"
   case "$arg" in
     --dry-run|-n) DRY_RUN=1 ;;
-    -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --otp) shift; OTP="${1:-}"; [ -n "$OTP" ] || { echo "publish.sh: --otp needs a code" >&2; exit 2; } ;;
+    --otp=*) OTP="${arg#--otp=}" ;;
+    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     @plumbox/*) ONLY+=("$arg") ;;
     *) echo "publish.sh: unknown argument \"$arg\" (try --help)" >&2; exit 2 ;;
   esac
+  shift
 done
 
 wants() {
@@ -65,6 +71,30 @@ if [ "$DRY_RUN" -eq 0 ]; then
     exit 1
   fi
   echo "npm user: $who"
+
+  # Two things fail at the very last step otherwise, after a full install,
+  # build and test run. Both are cheap to ask about up front.
+  #
+  # 1. The @plumbox scope has to exist as an npm organisation. Without it the
+  #    registry answers 404 "Scope not found" — the account's own scope is
+  #    @<username>, which is not what these packages are called.
+  if ! npm org ls plumbox >/dev/null 2>&1; then
+    cat >&2 <<'SCOPE'
+publish.sh: the @plumbox scope does not exist (or this account cannot see it).
+
+  Create the organisation once, free, at https://www.npmjs.com/org/create
+  (name: plumbox — public packages are free), then make sure this account is
+  a member with publish rights. RELEASING.md has the full walk-through.
+SCOPE
+    exit 1
+  fi
+  # 2. npm requires a second factor for publishing. Either enable 2FA on the
+  #    account and pass --otp, or use a granular access token that has
+  #    "Bypass two-factor authentication" ticked. Catching it here saves the
+  #    build; the real check is still the registry's.
+  if [ -z "$OTP" ] && ! grep -qs "^//registry.npmjs.org/:_authToken" "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"; then
+    echo "publish.sh: note — no token in .npmrc and no --otp given; if the registry asks for 2FA this will stop at the first package." >&2
+  fi
 fi
 
 # A clean tree, a clean install and green tests before anything leaves the
@@ -102,7 +132,7 @@ for pkg in "${ORDER[@]}"; do
     continue
   fi
   echo "== publishing $pkg@$ver"
-  npm publish --access public -w "$pkg"
+  npm publish --access public -w "$pkg" ${OTP:+--otp "$OTP"}
   published+=("$pkg@$ver")
 done
 

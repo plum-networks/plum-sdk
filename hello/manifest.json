@@ -1,0 +1,21 @@
+{
+  "id": "dev.plum.hello",
+  "name": "hello",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "description": "hello for Plum Box",
+  "mobile": true,
+  "permissions": [
+    "service:call",
+    "user:profile"
+  ],
+  "server": {
+    "bin": "svc",
+    "healthPath": "/healthz",
+    "limits": {
+      "memory": "128M",
+      "cpu": 50,
+      "pids": 32
+    }
+  }
+}
