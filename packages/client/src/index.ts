@@ -1,5 +1,5 @@
-export { PlumClient } from "./client.js";
-export type { PlumClientOptions, LoginResult, LoginOk, LoginNeedsTotp, AuthApi } from "./client.js";
+export { PlumClient, AuthApi } from "./client.js";
+export type { PlumClientOptions, LoginResult, LoginOk, LoginNeedsTotp } from "./client.js";
 export { DriveApi } from "./drive.js";
 export { AppsApi } from "./apps.js";
 export { discover, DEFAULT_RELAY_URL } from "./discover.js";

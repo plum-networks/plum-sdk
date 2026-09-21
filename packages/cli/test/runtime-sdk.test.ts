@@ -11,6 +11,19 @@ const RUNTIME = join(__dirname, '..', '..', '..', 'src', 'plum-sdk.js');
 
 type AnyRec = Record<string, any>;
 
+/**
+ * The nth message the page posted to the native bridge, parsed.
+ *
+ * `sent[i]` is `string | undefined` under noUncheckedIndexedAccess, and a
+ * message that was never sent should fail saying so rather than surface as a
+ * JSON parse error three lines later.
+ */
+function sentAt(sent: string[], i: number): AnyRec {
+  const raw = sent[i];
+  if (typeof raw !== 'string') throw new Error(`no native message #${i} was sent (got ${sent.length})`);
+  return JSON.parse(raw) as AnyRec;
+}
+
 function makeWindow(opts: { native?: AnyRec; sent?: string[]; fetch?: (url: string, init?: AnyRec) => Promise<AnyRec> } = {}): AnyRec {
   const listeners: Record<string, Array<(e: AnyRec) => void>> = {};
   const win: AnyRec = {
@@ -74,18 +87,18 @@ describe('runtime SDK v0.2', () => {
 
     const p = plum.ui.share({ text: 'hi' });
     expect(sent).toHaveLength(1);
-    const req = JSON.parse(sent[0]);
+    const req = sentAt(sent, 0);
     expect(req.method).toBe('share');
     expect(req.params).toEqual({ text: 'hi', handles: [] });
     win.__plumNativeReply(req.id, { ok: true, result: {} });
     await expect(p).resolves.toBeUndefined();
 
     const p2 = plum.ui.clipboard.read();
-    win.__plumNativeReply(JSON.parse(sent[1]).id, JSON.stringify({ ok: false, error: { code: 'cancelled', message: 'nope' } }));
+    win.__plumNativeReply(sentAt(sent, 1).id, JSON.stringify({ ok: false, error: { code: 'cancelled', message: 'nope' } }));
     await expect(p2).rejects.toMatchObject({ code: 'CancelledError', nativeCode: 'cancelled' });
 
     const p3 = plum.ui.biometric.confirm('unlock');
-    win.__plumNativeReply(JSON.parse(sent[2]).id, { ok: false, error: { code: 'unavailable', message: 'no Face ID' } });
+    win.__plumNativeReply(sentAt(sent, 2).id, { ok: false, error: { code: 'unavailable', message: 'no Face ID' } });
     await expect(p3).rejects.toMatchObject({ code: 'UnsupportedError' });
 
     // Unknown reply ids are ignored, not thrown.
@@ -98,7 +111,7 @@ describe('runtime SDK v0.2', () => {
     const plum = load(win);
     let backs = 0;
     expect(plum.ui.nav.setBackHandler(() => { backs++; })).toBe(true);
-    expect(JSON.parse(sent[0])).toMatchObject({ method: 'nav.setBackHandler', params: { enabled: true } });
+    expect(sentAt(sent, 0)).toMatchObject({ method: 'nav.setBackHandler', params: { enabled: true } });
     win.__plumNativeEvent('back', '{}');
     expect(backs).toBe(1);
     const seen: string[] = [];

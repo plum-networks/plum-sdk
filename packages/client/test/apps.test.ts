@@ -32,7 +32,7 @@ describe("client.apps", () => {
     const r = await client.apps.ensureServiceInstalled("com.example.notes");
     expect(r.installed).toBe(true);
     if (r.installed) expect(r.status.state).toBe("running");
-    expect(box.seen[0].headers?.authorization).toBe("Bearer plum_pat_t");
+    expect(box.seen[0]?.headers?.authorization).toBe("Bearer plum_pat_t");
   });
 
   it("ensureServiceInstalled hands back install links on 404", async () => {

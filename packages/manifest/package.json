@@ -1,0 +1,53 @@
+{
+  "name": "@plumbox/manifest",
+  "version": "0.1.0",
+  "description": "JSON Schema for the Plum Box app manifest (manifest.json) — the single source of truth shared by the plum-dev CLI, the Plum Store upload checks and the box installer.",
+  "license": "MIT",
+  "keywords": [
+    "plum",
+    "plumbox",
+    "plum-box",
+    "manifest",
+    "json-schema",
+    "plu",
+    "app-platform",
+    "validation"
+  ],
+  "homepage": "https://github.com/plum-networks/plum-sdk/tree/main/packages/manifest#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plum-networks/plum-sdk.git",
+    "directory": "packages/manifest"
+  },
+  "bugs": {
+    "url": "https://github.com/plum-networks/plum-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./manifest.schema.json": "./manifest.schema.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "manifest.schema.json",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "node -e \"JSON.parse(require('node:fs').readFileSync('manifest.schema.json','utf8'))\"",
+    "test": "node --test test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
