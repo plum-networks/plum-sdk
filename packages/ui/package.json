@@ -3,21 +3,51 @@
   "version": "0.1.0",
   "description": "Plum Box design system for .plu panels: the phone apps' tokens (colors, spacing, radii, type) as CSS custom properties, plus eight framework-free web components.",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/plum-networks/plum-sdk", "directory": "packages/ui" },
+  "keywords": [
+    "plum",
+    "plumbox",
+    "plum-box",
+    "design-system",
+    "web-components",
+    "custom-elements",
+    "css-variables",
+    "plu",
+    "panel"
+  ],
+  "homepage": "https://github.com/plum-networks/plum-sdk/tree/main/packages/ui#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plum-networks/plum-sdk.git",
+    "directory": "packages/ui"
+  },
+  "bugs": {
+    "url": "https://github.com/plum-networks/plum-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./src/plum-ui.js",
   "style": "./src/tokens.css",
   "exports": {
     ".": "./src/plum-ui.js",
     "./tokens.css": "./src/tokens.css",
-    "./plum-ui.js": "./src/plum-ui.js"
+    "./plum-ui.js": "./src/plum-ui.js",
+    "./package.json": "./package.json"
   },
-  "files": ["src", "README.md"],
+  "files": [
+    "src",
+    "README.md"
+  ],
   "sideEffects": true,
   "scripts": {
+    "build": "node --check src/plum-ui.js && node -e \"require('node:fs').readFileSync('src/tokens.css','utf8')\"",
     "test": "vitest run"
   },
   "devDependencies": {
     "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

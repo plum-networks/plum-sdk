@@ -3,10 +3,28 @@
   "version": "0.1.0",
   "description": "Zero-knowledge box discovery for Plum: find a user's box from (email, password) via an OPRF, without the relay learning the email, the password, or which box.",
   "license": "MIT",
+  "keywords": [
+    "plum",
+    "plumbox",
+    "plum-box",
+    "oprf",
+    "voprf",
+    "ristretto255",
+    "zero-knowledge",
+    "discovery",
+    "privacy"
+  ],
+  "homepage": "https://github.com/plum-networks/plum-sdk/tree/main/packages/oprf#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/plum-networks/plum-sdk",
+    "url": "git+https://github.com/plum-networks/plum-sdk.git",
     "directory": "packages/oprf"
+  },
+  "bugs": {
+    "url": "https://github.com/plum-networks/plum-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "type": "module",
   "main": "./dist/index.cjs",
@@ -17,9 +35,13 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
@@ -35,5 +57,7 @@
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }

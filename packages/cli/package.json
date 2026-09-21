@@ -3,19 +3,42 @@
   "version": "0.1.0",
   "description": "Developer CLI for Plum Box apps: create a publisher key, pair your own box, package and sign a .plu, push it, follow its logs, and run a panel locally.",
   "license": "MIT",
+  "keywords": [
+    "plum",
+    "plumbox",
+    "plum-box",
+    "cli",
+    "plu",
+    "app-platform",
+    "self-hosted",
+    "code-signing",
+    "ed25519"
+  ],
+  "homepage": "https://github.com/plum-networks/plum-sdk/tree/main/packages/cli#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/plum-networks/plum-sdk",
+    "url": "git+https://github.com/plum-networks/plum-sdk.git",
     "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/plum-networks/plum-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "type": "module",
   "bin": {
     "plum-dev": "./dist/cli.js"
   },
+  "main": "./dist/cli.js",
+  "exports": {
+    ".": "./dist/cli.js",
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
-    "README.md",
-    "emulator"
+    "emulator",
+    "README.md"
   ],
   "scripts": {
     "build": "tsup src/cli.ts --format esm --target node18 --clean && cp ../../src/plum-sdk-mock.js dist/plum-sdk-mock.js",
