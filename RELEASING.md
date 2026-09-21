@@ -38,7 +38,9 @@ dependents.
 2. **Write down what changed** in that package's `README.md` if the surface
    moved. There is no CHANGELOG yet; the git log is it.
 3. **Commit.** A published tarball must correspond to a commit — `publish.sh`
-   refuses a dirty tree.
+   refuses to run with tracked changes in the tree. Untracked files only warn;
+   they cannot reach a tarball unless they sit inside a path the package's
+   `files` whitelist names.
 4. **Rehearse:**
    ```bash
    bash scripts/publish.sh --dry-run

@@ -67,10 +67,17 @@ if [ "$DRY_RUN" -eq 0 ]; then
   echo "npm user: $who"
 fi
 
-# A clean tree, a clean install and green tests before anything leaves the machine.
-if [ -n "$(git status --porcelain)" ]; then
-  echo "publish.sh: working tree is dirty — commit or stash first (a published tarball must match a commit)." >&2
+# A clean tree, a clean install and green tests before anything leaves the
+# machine. Tracked changes are fatal: a published tarball has to correspond to
+# a commit. Untracked files only warn — they cannot reach a tarball unless they
+# sit inside a path the package's `files` whitelist names, and scratch
+# directories in a working copy are normal.
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  echo "publish.sh: tracked files are modified — commit or stash first (a published tarball must match a commit)." >&2
+  git status --short --untracked-files=no >&2
   if [ "$DRY_RUN" -eq 0 ]; then exit 1; fi
+elif [ -n "$(git status --porcelain)" ]; then
+  echo "publish.sh: note — untracked files present; check the pack lists below if any sit under dist/ or src/." >&2
 fi
 npm ci
 npm run build --workspaces
