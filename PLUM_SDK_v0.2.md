@@ -20,7 +20,9 @@ v0.1 로 만든 앱은 손대지 않아도 그대로 돈다.
 | `plum.ui.biometric.confirm(reason)` | — | Face ID/지문 확인. 브라우저에선 `UnsupportedError` |
 | `plum.ui.nav.setBackHandler(fn \| null)` | — | 뒤로가기를 앱이 받는다. 브라우저 셸에선 `history` 와 무관하게 no-op 이며 `false` 반환 |
 | `plum.ui.nav.close()` | — | 앱 화면 닫기(폰 앱) / 셸에 닫기 요청(웹, postMessage `close`) |
-| `plum.app.capabilities()` | — | `{ sdk: "0.2", apiLevel, native: { platform, version, capabilities[] } \| null, ui: { share, clipboard, capture, haptic, biometric, nav } }` — 각 ui 값은 `"native" \| "web" \| "none"` |
+| `plum.ui.inShell()` | — | 폰 앱 셸 안인가(`<html data-plum-shell>`). 셸은 **제목 줄을 직접 그린다**(`document.title`, 없으면 앱 이름) — 셸 안에선 앱이 자기 제목을 숨긴다 |
+| `plum.ui.menu.set(items, onSelect)` / `.clear()` | — | 앱의 메뉴 항목(`{id, label, destructive?}`, 최대 8개)을 셸 캡슐의 ⋯ 에 넣는다. 누르면 `onSelect(id)`. 셸이 받으면 `true` — 그때만 페이지 안 ⋯ 를 숨긴다. 웹·옛 앱은 `false` |
+| `plum.app.capabilities()` | — | `{ sdk: "0.2", apiLevel, native: { platform, version, capabilities[] } \| null, ui: { share, clipboard, capture, haptic, biometric, nav, menu } }` — 각 ui 값은 `"native" \| "web" \| "none"` |
 | `plum.app.open(appId, path?)` | — | 다른 앱으로 이동(셸에 요청). 폰 앱은 그 앱의 WebView 로 교체, 웹은 런치패드 라우팅. 설치 안 됐으면 스토어 페이지로 |
 | `plum.events.subscribe(kinds, cb)` | — | v0.1 이후 core 에 먼저 들어간 것을 문서화(§이벤트) |
 | `plum.entitlement.get()` | — | 이 앱의 스토어 영수증 뷰 `{ skus:[{sku, kind, expires_at, active}], refreshed_at, stale }` |
@@ -56,6 +58,13 @@ interface PlumUI {
     /** 반환값: 이 호스트가 뒤로가기를 앱에 넘길 수 있는가. */
     setBackHandler(fn: (() => void) | null): boolean;
     close(): void;
+  };
+  /** 폰 앱 셸 안인가 — 셸이 제목 줄과 ⋯ 를 그린다. */
+  inShell(): boolean;
+  menu: {
+    /** 반환값: 셸의 ⋯ 가 항목을 받았는가. false 면 페이지 안 메뉴를 그대로 둔다. */
+    set(items: { id: string; label: string; destructive?: boolean }[], onSelect: (id: string) => void): boolean;
+    clear(): boolean;
   };
 }
 

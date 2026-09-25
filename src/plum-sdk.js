@@ -1265,6 +1265,7 @@
 
   // --- plum.ui (v0.2) ---
   let backOff = null;
+  let menuOff = null;
   const ui = {
     async share(opts) {
       const o = opts || {};
@@ -1374,6 +1375,35 @@
           if (window.parent && window.parent !== window) window.parent.postMessage({ source: 'plum-app', type: 'close' }, window.location.origin);
         } catch (e) { /* no host */ }
       }
+    },
+    // In the phone app the shell draws the title row (from document.title)
+    // and the ⋯ of its capsule. An app hands its own menu items to that ⋯
+    // instead of drawing a second one. set() returns false where there is no
+    // such shell (web, older phone app) — keep the in-page menu then.
+    inShell() {
+      return typeof document !== 'undefined' && !!document.documentElement &&
+        document.documentElement.hasAttribute('data-plum-shell');
+    },
+    menu: {
+      set(items, onSelect) {
+        if (!native.has('menu')) return false;
+        if (menuOff) { menuOff(); menuOff = null; }
+        const list = (Array.isArray(items) ? items : []).filter(function (it) {
+          return it && it.id != null && it.label != null && String(it.id) !== '' && String(it.label) !== '';
+        }).slice(0, 8).map(function (it) {
+          const out = { id: String(it.id).slice(0, 64), label: String(it.label).slice(0, 40) };
+          if (it.destructive) out.destructive = true;
+          return out;
+        });
+        if (typeof onSelect === 'function' && list.length) {
+          menuOff = native.on('menu', function (p) { onSelect(String((p && p.id) || '')); });
+        }
+        native.call('menu.set', { items: list }).catch(function () { /* older shell */ });
+        return true;
+      },
+      clear() {
+        return ui.menu.set([]);
+      }
     }
   };
 
@@ -1425,7 +1455,8 @@
         capture: src('capture', typeof document !== 'undefined'),
         haptic: src('haptic', !!navigator.vibrate),
         biometric: src('biometric', false),
-        nav: src('nav', false)
+        nav: src('nav', false),
+        menu: src('menu', false)
       }
     };
   };

@@ -32,7 +32,7 @@ function makeWindow(opts: { native?: AnyRec; sent?: string[]; fetch?: (url: stri
     removeEventListener() {},
     setTimeout, clearTimeout,
     navigator: { language: 'en', vibrate: undefined, share: undefined, clipboard: undefined },
-    document: { documentElement: { dataset: {}, lang: '' }, createElement: () => ({ style: {}, addEventListener() {}, remove() {}, click() {} }), body: { appendChild() {} }, head: { appendChild() {} } },
+    document: { documentElement: { dataset: {}, lang: '', hasAttribute: () => false }, createElement: () => ({ style: {}, addEventListener() {}, remove() {}, click() {} }), body: { appendChild() {} }, head: { appendChild() {} } },
     localStorage: { getItem: () => null, setItem() {} },
     URLSearchParams, JSON, Map, Set, Promise, Error, Object, Array, String, Number, Date, RegExp, Uint8Array, encodeURIComponent, decodeURIComponent,
     fetch: opts.fetch ?? (async () => ({ ok: true, status: 200, json: async () => ({}) })),
@@ -70,8 +70,11 @@ describe('runtime SDK v0.2', () => {
     const caps = await plum.app.capabilities();
     expect(caps.sdk).toBe('0.2');
     expect(caps.native).toBeNull();
-    expect(caps.ui).toEqual({ share: 'web', clipboard: 'none', capture: 'web', haptic: 'none', biometric: 'none', nav: 'none' });
+    expect(caps.ui).toEqual({ share: 'web', clipboard: 'none', capture: 'web', haptic: 'none', biometric: 'none', nav: 'none', menu: 'none' });
     expect(plum.ui.nav.setBackHandler(() => {})).toBe(false);
+    // No shell ⋯ to hand items to: the app keeps its own menu.
+    expect(plum.ui.menu.set([{ id: 'a', label: 'A' }], () => {})).toBe(false);
+    expect(plum.ui.inShell()).toBe(false);
     await expect(plum.ui.biometric.confirm('why')).rejects.toMatchObject({ code: 'UnsupportedError' });
     await expect(plum.ui.clipboard.write('x')).rejects.toMatchObject({ code: 'UnsupportedError' });
   });
@@ -122,6 +125,34 @@ describe('runtime SDK v0.2', () => {
     plum.ui.nav.setBackHandler(null);
     win.__plumNativeEvent('back', {});
     expect(backs).toBe(1);
+  });
+
+  it('hands menu items to the shell capsule and routes the tap back', () => {
+    const sent: string[] = [];
+    const win = makeWindow({ native: { version: 1, platform: 'android', capabilities: ['menu'] }, sent });
+    win.document.documentElement.hasAttribute = (n: string) => n === 'data-plum-shell';
+    const plum = load(win);
+    expect(plum.ui.inShell()).toBe(true);
+    const picked: string[] = [];
+    const items = [
+      { id: 'connect', label: '이 기기에 연결' },
+      { id: '', label: 'dropped: no id' },
+      { id: 'wipe', label: 'x'.repeat(50), destructive: true },
+      ...Array.from({ length: 10 }, (_, i) => ({ id: 'n' + i, label: 'N' + i })),
+    ];
+    expect(plum.ui.menu.set(items, (id: string) => picked.push(id))).toBe(true);
+    const req = sentAt(sent, 0);
+    expect(req.method).toBe('menu.set');
+    expect(req.params.items).toHaveLength(8);
+    expect(req.params.items[0]).toEqual({ id: 'connect', label: '이 기기에 연결' });
+    expect(req.params.items[1]).toEqual({ id: 'wipe', label: 'x'.repeat(40), destructive: true });
+    win.__plumNativeEvent('menu', { id: 'connect' });
+    expect(picked).toEqual(['connect']);
+    // Replacing or clearing drops the old listener: one tap, one call.
+    expect(plum.ui.menu.clear()).toBe(true);
+    expect(sentAt(sent, 1).params).toEqual({ items: [] });
+    win.__plumNativeEvent('menu', { id: 'connect' });
+    expect(picked).toEqual(['connect']);
   });
 
   it('entitlement.get hits the app endpoint', async () => {

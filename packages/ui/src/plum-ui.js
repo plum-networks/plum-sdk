@@ -109,6 +109,12 @@ class PlumTopBar extends PlumElement {
       .s { font: var(--plum-text-mono); color: var(--plum-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .s:empty { display: none; }
       .actions { display: flex; align-items: center; gap: 2px; }
+      /* Phone app: the shell's own row already shows the title (it reads
+         document.title), so the bar keeps only its buttons — and goes away
+         when it has none, instead of a second, empty header. */
+      :host([shell]) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom-color: transparent; }
+      :host([shell]) .titles { visibility: hidden; }
+      :host([shell][bare]) { display: none; }
     `, `
       <div class="bar" part="bar">
         <button class="back" part="back" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
@@ -117,10 +123,31 @@ class PlumTopBar extends PlumElement {
         <div class="actions"><slot name="actions"></slot></div>
       </div>`);
     this.$(".back").addEventListener("click", () => emit(this, "plum-back"));
+    this.shadowRoot.querySelectorAll("slot").forEach((sl) => sl.addEventListener("slotchange", () => this._bare()));
+  }
+  connectedCallback() {
+    const inShell = typeof document !== "undefined" && !!document.documentElement &&
+      document.documentElement.hasAttribute("data-plum-shell");
+    this.toggleAttribute("shell", inShell);
+    this._bare();
+    this._title();
   }
   attributeChangedCallback() {
     this.$(".t").textContent = this.getAttribute("title") || "";
     this.$(".s").textContent = this.getAttribute("subtitle") || "";
+    this._bare();
+    this._title();
+  }
+  // Nothing left to show once the title moves to the shell: no back button
+  // and nothing slotted.
+  _bare() {
+    const slotted = Array.from(this.shadowRoot.querySelectorAll("slot")).some((sl) => sl.assignedNodes({ flatten: true }).some((n) => n.nodeType === 1));
+    this.toggleAttribute("bare", !this.hasAttribute("back") && !slotted);
+  }
+  // The shell titles its row from document.title.
+  _title() {
+    const t = this.getAttribute("title");
+    if (this.hasAttribute("shell") && t && typeof document !== "undefined") document.title = t;
   }
 }
 define("top-bar", PlumTopBar);

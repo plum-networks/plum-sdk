@@ -54,6 +54,7 @@
 | `nav` | `nav.setBackHandler` | `{ enabled }` | `{}` | — |
 | 〃 | `nav.close` | `{}` | `{}` | — |
 | 〃 | `nav.openApp` | `{ app_id, path? }` | `{}` | `failed` (설치 안 됐으면 셸이 스토어 페이지를 연다) |
+| `menu` | `menu.set` | `{ items: [{ id(≤64), label(≤40), destructive? }] }` 최대 8개, 빈 배열=지우기 | `{}` | `invalid_params` |
 | `push` | `push.subscribe` | `{ topics: string[] }` | `{ subscribed: string[] }` | `unsupported` (**T6 전까지 항상**) |
 
 공통 오류 코드: `unsupported`(이 셸엔 없는 능력), `invalid_params`, `cancelled`, `denied`, `unavailable`,
@@ -89,11 +90,22 @@
 | name | payload | 언제 |
 |---|---|---|
 | `back` | `{}` | `nav.setBackHandler` 가 켜진 상태에서 뒤로가기 |
+| `menu` | `{ id }` | 캡슐 ⋯ 에서 앱이 `menu.set` 으로 넣은 항목을 누름 |
 | `theme` | `{ theme: "light" \| "dark" }` | 시스템/앱 테마 변경 (SDK 의 `app.onThemeChange` 로 흘러간다; 실행 URL 의 `?theme=` 이 첫 값) |
 | `locale` | `{ locale: "ko" }` | 앱 언어 변경 |
 | `resume` / `pause` | `{}` | 앱이 전면으로 돌아옴 / 뒤로 감. 패널은 `resume` 에 목록을 다시 읽는 식으로 쓴다 |
 
 ## 4. 셸이 함께 책임지는 것 (브리지 밖)
+
+### 화면 틀 (2026-09-25)
+셸은 **모든 앱에 같은 틀**을 그린다. 앱은 신청하지 않는다.
+- 맨 위: 상태바 + 한 줄(iOS 52pt / Android 56dp). 왼쪽에 **제목**(`document.title`, 비었으면 앱 이름),
+  오른쪽에 캡슐 **⋯ │ ✕**. 줄과 아래쪽 띠는 페이지 맨 위·맨 아래 배경색으로 칠한다(`shell.colors`, 셸 내부 메시지).
+- 페이지는 그 줄 아래에서 시작한다 — 시계·캡슐 밑에 그리지 않는다.
+- 캡슐 ⋯ = 앱이 `menu.set` 으로 준 항목 → 구분선 → 셸 항목(새로고침·권한·앱 정보·삭제). 항목은 페이지를 새로
+  읽거나 이동하면 지워진다.
+- 셸은 문서 시작 때 `<html data-plum-shell="native">` 를 둔다. 앱(또는 `@plumbox/ui` 의 `plum-top-bar`)은 이걸
+  보고 **자기 제목을 숨긴다** — 제목은 셸 줄에 이미 있다.
 
 이것들은 method 가 아니라 WebView 설정이다. 둘 다 v1 에 포함.
 

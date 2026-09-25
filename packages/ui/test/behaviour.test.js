@@ -38,6 +38,7 @@ function installDom() {
           if (!this._nodes.has(sel)) this._nodes.set(sel, shadowNode());
           return this._nodes.get(sel);
         },
+        querySelectorAll: () => this._slots || [],
       };
       return this.shadowRoot;
     }
@@ -56,6 +57,11 @@ function installDom() {
     }
     getAttribute(n) { return this._attrs.has(n) ? this._attrs.get(n) : null; }
     hasAttribute(n) { return this._attrs.has(n); }
+    toggleAttribute(n, force) {
+      const on = force === undefined ? !this._attrs.has(n) : !!force;
+      if (on) this.setAttribute(n, ''); else this.removeAttribute(n);
+      return on;
+    }
     removeAttribute(n) {
       if (!this._attrs.has(n)) return;
       const old = this._attrs.get(n);
@@ -87,6 +93,51 @@ describe('plum-top-bar', () => {
     // indent the title (an empty wrapper span would).
     expect(bar.shadowRoot.innerHTML).toMatch(/\.lead \{ display: contents; \}/);
     expect(bar.shadowRoot.innerHTML).toContain('part="leading"');
+  });
+});
+
+describe('plum-top-bar in the phone shell', () => {
+  function shellDoc(on) {
+    globalThis.document = {
+      title: '',
+      documentElement: { hasAttribute: (n) => on && n === 'data-plum-shell' },
+    };
+  }
+  const slot = (els) => ({ addEventListener() {}, assignedNodes: () => els.map(() => ({ nodeType: 1 })) });
+
+  it('hands its title to the shell row and keeps its buttons', () => {
+    shellDoc(true);
+    const bar = new mod.PlumTopBar();
+    bar._slots = [slot([]), slot(['button'])];
+    bar.setAttribute('title', 'Contacts');
+    bar.connectedCallback();
+    expect(bar.hasAttribute('shell')).toBe(true);
+    expect(bar.hasAttribute('bare')).toBe(false);
+    expect(document.title).toBe('Contacts');
+    expect(bar.shadowRoot.innerHTML).toMatch(/:host\(\[shell\]\) \.titles \{ visibility: hidden; \}/);
+  });
+
+  it('goes away when the title was all it had', () => {
+    shellDoc(true);
+    const bar = new mod.PlumTopBar();
+    bar._slots = [slot([]), slot([])];
+    bar.setAttribute('title', 'Downloads');
+    bar.connectedCallback();
+    expect(bar.hasAttribute('bare')).toBe(true);
+    expect(bar.shadowRoot.innerHTML).toMatch(/:host\(\[shell\]\[bare\]\) \{ display: none; \}/);
+    // a back button is still something to show
+    bar.setAttribute('back', '');
+    expect(bar.hasAttribute('bare')).toBe(false);
+  });
+
+  it('changes nothing on the web', () => {
+    shellDoc(false);
+    const bar = new mod.PlumTopBar();
+    bar._slots = [];
+    bar.setAttribute('title', 'Contacts');
+    bar.connectedCallback();
+    expect(bar.hasAttribute('shell')).toBe(false);
+    expect(document.title).toBe('');
   });
 });
 

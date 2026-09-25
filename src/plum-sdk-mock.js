@@ -192,6 +192,8 @@
       async openExternal(url) { window.open(String(url), '_blank', 'noopener'); },
       biometric: { async confirm() { throw makeErr('UnsupportedError', 'no biometrics in the mock'); } },
       nav: { setBackHandler() { return false; }, close() { console.log('[plum mock] nav.close()'); } },
+      inShell() { return false; },
+      menu: { set() { return false; }, clear() { return false; } },
     },
 
     // v0.2 — entitlements: no store in the mock. Override window.plum.entitlement.get
