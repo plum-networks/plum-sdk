@@ -320,6 +320,11 @@ class PlumField extends PlumElement {
       :host([error]) .box { border-color: var(--plum-reject); }
       input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; font-size: 15px; height: 100%; }
       input::placeholder { color: var(--plum-faint); }
+      /* iOS Safari/WKWebView zooms the page in on focus when an input's text
+         is under 16px, and does not zoom back out — a pasted long URL then
+         leaves the whole panel wider than the phone. 16px on touch/narrow
+         screens stops the zoom; the desktop keeps its 15px. */
+      @media (max-width: 640px), (pointer: coarse) { input { font-size: 16px; } }
       .msg { font: var(--plum-text-small); margin: 6px 0 0; color: var(--plum-muted); }
       .msg:empty { display: none; }
       :host([error]) .msg { color: var(--plum-reject); }
