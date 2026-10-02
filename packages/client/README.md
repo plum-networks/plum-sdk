@@ -156,10 +156,33 @@ Do not use this path in a third-party app — see the warning at the top.
 | First-party auth | `login`, `verifyTotp`, `auth.createToken/listTokens/revokeToken/me/logout`, `setToken/loadToken/clearToken` |
 | Drive | `list`, `listAll` (auto-pagination), `download`, `upload` (auto-chunked >8 MiB, `overwrite` option), `mkdir`, `ensureDir`, `rename`, `move`, `remove` (→ trash), `trash.list/restore/empty`, `versions.list/restore` |
 | Apps (companion) | `apps.status`, `apps.ensureServiceInstalled` (→ `plum://store/<id>` / web install link), `apps.entitlement`, `apps.refreshEntitlements` |
-| Errors | `PlumApiError` (status/code), `PlumAuthError` (401/403 → `onAuthError` hook) |
+| Errors | `PlumApiError` (status/code/`retryAfterMs`), `PlumAuthError` (401/403 → `onAuthError` hook), `ListingIncompleteError` (503 `listing_incomplete`, see below) |
 
 ## Sync-client notes
 
+- **A listing you could not get is not an empty listing.** When the box cannot
+  read every folder of a recursive listing it answers `503 {"error":"listing_incomplete"}`
+  instead of a shorter list, and `list` / `listAll` throw `ListingIncompleteError`
+  (a `PlumApiError`, so existing `instanceof PlumApiError` checks still catch it).
+  Abort that sync pass: do not diff against what you have, and do not delete
+  anything. If `listAll` throws partway, the entries it already yielded are not
+  the folder's contents either. List again later — not before `err.retryAfterMs`
+  when the box sent `Retry-After`. The SDK never retries on its own. (Boxes
+  older than this change answered a silently partial `200`; there is nothing a
+  client can do about those but update the box.)
+  ```ts
+  try {
+    for await (const f of box.drive.listAll("/", { recursive: true, hash: true })) onBox.set(f.path, f);
+  } catch (e) {
+    if (e instanceof ListingIncompleteError) return scheduleRetry(e.retryAfterMs ?? 60_000); // no diff, no deletes
+    throw e;
+  }
+  ```
+- Entries whose bytes live on another box of the owner's RAID set carry
+  `remote: true`. Treat them like any other entry when you diff (current
+  boxes include them in recursive listings and searches), and `download`
+  streams them from that box — expect it to be slower, and to fail while that
+  box is offline.
 - `list(..., { hash: true })` returns the box-indexed SHA-256 per file; files uploaded before hash indexing omit it — fall back to `size` + `modTime`.
 - `upload(..., { overwrite: true })` replaces in place and the box snapshots the previous content as a version. Without it, name collisions create `name (2).ext`.
 - `remove` moves to the box trash (user-recoverable), not a hard delete.
