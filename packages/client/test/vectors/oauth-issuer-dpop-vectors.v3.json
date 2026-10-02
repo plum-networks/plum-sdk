@@ -1,0 +1,1548 @@
+{
+  "_comment": "v3 vectors for oauth-issuer.v3.md. Supersedes v2 (whose 12 proofs are carried over byte for byte, tagged [v2]). The box compares htu with the issuer BOUND INTO THE CODE at authorize (normalised: lower-case scheme+host, default port dropped), never with r.Host. expect.code_consumed=false means the box rejected the proof BEFORE looking the code up. New proofs use RFC 6979 deterministic ECDSA (gen_vectors.py reproduces this file). Group-hash vectors are gone (no plum_issuer_group in phase 1).",
+  "version": 3,
+  "key": {
+    "derivation": "d = SHA-256(\"plum-dpop-test-vector-v1\") mod n(P-256)",
+    "d_hex": "3bdd72c7b9143e523dc142680c554503873f676428e40144da36b5e4360e6c7f",
+    "jwk": {
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "rOasc4l_35eu-HjrM2THxSrE42Jyd6gqCeCaOHYBh68",
+      "y": "atWTyn3rt54othLhU5eEW2HF5vZ-wuMAtOBWC7cI7oA"
+    },
+    "thumbprint_input": "{\"crv\":\"P-256\",\"kty\":\"EC\",\"x\":\"rOasc4l_35eu-HjrM2THxSrE42Jyd6gqCeCaOHYBh68\",\"y\":\"atWTyn3rt54othLhU5eEW2HF5vZ-wuMAtOBWC7cI7oA\"}",
+    "jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA"
+  },
+  "other_key": {
+    "derivation": "d = SHA-256(\"plum-dpop-test-vector-v1-other\") mod n(P-256)",
+    "jwk": {
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "I1kVfzhVkrxTyFZ3-DLI_JzvxoRTBYrhl79tQiqcuGM",
+      "y": "prRtu3SJ3MxBE2a8txmLehrZotbJPQcLVPTDCw2nQUQ"
+    },
+    "jkt": "-tp8stEj09nmyB44ZtXC3YzfhIEViVp_iVoV4BBXqkw"
+  },
+  "now_unix": 1790000000,
+  "iat_window_seconds": 600,
+  "max_proof_bytes": 2048,
+  "cases": [
+    {
+      "name": "valid proof for the real box (v1 vector, unchanged) [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TVEifQ.7bipxPd6rzvkPAnPeMsJcVWoDrRwjXJphxZGqavmNNBeOdmEy9Zp5WXkh5wGScqezj4YLaI4ljVT2rFqQV-KrQ",
+      "expect": {
+        "result": "accept",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "victim's proof for the attacker's server, replayed at the real box (v1 vector) [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-evil.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi1ldmlsLnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TVEifQ.ymNrfjzbJwKtTe0ix323GXjzQB9tQpLJR-htuLWqRmaLQTCzMr6Wn4Ry4oTUtHPcAyzy3uU63JkNz1Lw754bgg",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "real box's -lan name with :8443 is NOT the issuer; v2 compares with the bound issuer only [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234-lan.plumbox.me:8443/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LWxhbi5wbHVtYm94Lm1lOjg0NDMvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkakl0YkdGdUxUQXdNREUifQ.qW2n2ZaaoYIxksX4FhWgDfWWW2nDKh3CCEDy1OUT0-K5pczOcmljESkZYaywtJqO3zSnMGXMOLQ5vnLaC1VvBQ",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "upper-case host and explicit :443 normalise to the bound issuer [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://PB-1234.plumbox.me:443/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9QQi0xMjM0LnBsdW1ib3gubWU6NDQzL2FwaS9vYXV0aC90b2tlbiIsImlhdCI6MTc5MDAwMDAwMCwianRpIjoiZGpJdFkyRnpaUzB3TURBeCJ9.zTyQjNYIec_lqNLmXaJKHu6w63yUPvUqyJhz_p8Qie1etdcUSDUCA_bKUuabXVc1PuFXg-GqlBbV2xzixVvNbA",
+      "expect": {
+        "result": "accept",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "emulator: http issuer with port, bound at authorize from the request Host (PLUMBOX_EMULATOR=1 only) [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "http://10.0.2.2:8080",
+      "htu": "http://10.0.2.2:8080/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cDovLzEwLjAuMi4yOjgwODAvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkakl0WlcxMUxUQXdNREUifQ.wFwaLNbaPgUevilxctx5oogXelmFlue9g9-CIMHTzMv0ey7QwlQCbLGUft0zpSDiqmC8ykvZi34FGleatHKwXA",
+      "expect": {
+        "result": "accept",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "the emulator-shaped proof presented to a real box (bound issuer is https://pb-1234...) [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "http://10.0.2.2:8080/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cDovLzEwLjAuMi4yOjgwODAvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkakl0WlcxMUxUQXdNREkifQ.MTNzk0glBq1tSL_dOnMA0bt02YIa170VXh4UfKifupmKgdUGAl1rdfAR7ewnCOCA-348xzyvOOiC6ZL-kkS4ew",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "phone clock 1 h behind: rejected BEFORE the code is looked up, code still redeemable [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzg5OTk2NDAwLCJqdGkiOiJkakl0YzJ0bGR5MHdNREF4In0.g_TkOHOJGN0gvZACnxN1dNvfV_Ht4722ACOQNWrMWXLpl6Dw6Vq0aaeJEbulxEwbimKeAlB6GJPqOQ7iRj3soQ",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false,
+        "plum_retry": "iat",
+        "plum_server_time": 1790000000
+      }
+    },
+    {
+      "name": "retry of the case above with iat taken from plum_server_time (v2: Date header) [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAyLCJqdGkiOiJkakl0YzJ0bGR5MHdNREF5In0.kRmRmVBEOU-uQf-QMMQmsQbhWfkEQ87EIh9pXNHybrSE8UgLbdvd8K8vBDc3FkqJaEutMMOTUfwp_kS05MibeA",
+      "expect": {
+        "result": "accept",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "query string on htu [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token?x=1",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuP3g9MSIsImlhdCI6MTc5MDAwMDAwMCwianRpIjoiZGpJdGNYVmxjbmt0TURBeCJ9.GXSuVH6OZ_HwDUWrvyfzCJOkYANofAu-5DEs93Cwm0wlXGu_f9xZ1qNj4VPBozzy7elZPToP4G8lclLu4b_AVw",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "userinfo trick [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me@pb-evil.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWVAcGItZXZpbC5wbHVtYm94Lm1lL2FwaS9vYXV0aC90b2tlbiIsImlhdCI6MTc5MDAwMDAwMCwianRpIjoiZGpJdGRYTmxjaTB3TURBeCJ9.MGQMakfrSJ_uRN5eEY-rsKTWshfGR3bEBF21mOiK3Sx-zUOTmOOgtjXwj7fXgkIi3tNFuGgTY6E31EwDLKQXiQ",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "htm GET [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJHRVQiLCJodHUiOiJodHRwczovL3BiLTEyMzQucGx1bWJveC5tZS9hcGkvb2F1dGgvdG9rZW4iLCJpYXQiOjE3OTAwMDAwMDAsImp0aSI6ImRqSXRhSFJ0TFRBd01ERSJ9.dljBEYsfasIRqOWIBWaSTQeUt0kAIQFoDX63Bej3DrjXPqNpa3KC9be-RhkI44DjhFHnUEEKHhPpNKATR5hgpg",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "typ jwt [v2]",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJqd3QifQ.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkakl0ZEhsd0xUQXdNREUifQ.NymsPqS9tC9c8D_iQEuzMZWkjQFGLjM-t8B1P5Pja8gMXAKQ93x--pate_sLmGKWwt1EZ1cJiWcJPAQPlsrSAw",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "typ compared case-insensitively (DPoP+JWT)",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJEUG9QK0pXVCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.RtK0JB0Vo3pPFKZGw9054IsANvCMaXKw_xW1BTb_XY4EhVCy7wiEYJWGlPSyV9PCWZ03qXCm1-bb_evwjeB6BQ",
+      "expect": {
+        "result": "accept",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "unbound code (no dpop_jkt) + valid proof for the bound issuer",
+      "bound_jkt": "",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.dYu9y47U7w9LH5EWbdpH3W_N5LjKnM2RM-Kq73jHcR-3KAcJoZO55BfbnPMDj4G7q5ixdq9vPhrDluz8T2IhMw",
+      "expect": {
+        "result": "accept",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "unbound code + proof for another issuer",
+      "bound_jkt": "",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-evil.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi1ldmlsLnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.FkTNYvJU7m3RVSnCaBzeAuFh76WHFYlr6QpXD17YLUatPNo8Drxx8-IJWX2i0cRnhPDU_YK7ruOZZguyr4KljQ",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "valid proof by another key than the one bound at authorize",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6Ikkxa1ZmemhWa3J4VHlGWjMtRExJX0p6dnhvUlRCWXJobDc5dFFpcWN1R00iLCJ5IjoicHJSdHUzU0ozTXhCRTJhOHR4bUxlaHJab3RiSlBRY0xWUFREQ3cyblFVUSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.cQIlDlqN3zDppWHKGbROH0vCe4vLAUpGmXdMKjV4eeqVXqMAajATgAr-o5ZSCNG_U5P-_Z5rTmJtuhhnoyZreA",
+      "expect": {
+        "result": "invalid_grant",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "http htu for a box whose bound issuer is https",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "http://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cDovL3BiLTEyMzQucGx1bWJveC5tZS9hcGkvb2F1dGgvdG9rZW4iLCJpYXQiOjE3OTAwMDAwMDAsImp0aSI6ImRqTXRkbVZqZEc5eSJ9.ql7_CyAwuG0OF9_Tq5VVhS4GSzAKgehrgi-55CGzMQrZ2vbYrqAMwUGYxmksfnx1wkmQ3F44j4IsFt95tPYUqQ",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": true
+      }
+    },
+    {
+      "name": "iat 11 min in the future",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwNjYwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.gIYxYmju3r8WlWAyeuSQDjsQ30FPUzDr5t-dJPVvIqHtBX06Vqo4sBRB11aMD9S6KH9XnXsvSbqE945lQGPgvQ",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false,
+        "plum_retry": "iat",
+        "plum_server_time": 1790000000
+      }
+    },
+    {
+      "name": "off-curve jwk point",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvRSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.khxAxszYtz6cBiYRQfjcSdakmFZ7yjDxyQ5q1R13vRnS-8ujRn66EK_O_TL4f_QXLpG7_sTPppo9d7IkNtKNdw",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "DER-encoded signature instead of raw r||s",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.MEUCIHWLvcuO1O8PSx-RFm3aR91vzeS4ypzNkTPiqu94x3EfAiEAtygHCaGTueQX25zzA4-Bu6uYsXavbz4aw5bs_E9iITM",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "63-byte signature",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.dYu9y47U7w9LH5EWbdpH3W_N5LjKnM2RM-Kq73jHcR-3KAcJoZO55BfbnPMDj4G7q5ixdq9vPhrDluz8T2Ih",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "65-byte signature",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.dYu9y47U7w9LH5EWbdpH3W_N5LjKnM2RM-Kq73jHcR-3KAcJoZO55BfbnPMDj4G7q5ixdq9vPhrDluz8T2IhMwA",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "alg none, empty signature",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJub25lIiwiandrIjp7ImNydiI6IlAtMjU2Iiwia3R5IjoiRUMiLCJ4Ijoick9hc2M0bF8zNWV1LUhqck0yVEh4U3JFNDJKeWQ2Z3FDZUNhT0hZQmg2OCIsInkiOiJhdFdUeW4zcnQ1NG90aExoVTVlRVcySEY1dlotd3VNQXRPQldDN2NJN29BIn0sInR5cCI6ImRwb3Arand0In0.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "alg HS256 (HMAC over the signing input)",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJIUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.ShN0_MkmpN-Ji8mYRDFxgawT-mfU1wPmE10evB2mq1k",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "alg ES384 header on an ES256 signature",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzM4NCIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.cKEjbLVuPu1ih4qfNbS_WHO_mCtu5kcRcIEyd18ZRFidBHdR81tjLtP5lOkaBTLXQT9eiW_3qBnKjmcoCHldRw",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "private key member d in the jwk",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImQiOiJPOTF5eDdrVVBsSTl3VUpvREZWRkE0Y19aMlFvNUFGRTJqYTE1RFlPYkg4Iiwia3R5IjoiRUMiLCJ4Ijoick9hc2M0bF8zNWV1LUhqck0yVEh4U3JFNDJKeWQ2Z3FDZUNhT0hZQmg2OCIsInkiOiJhdFdUeW4zcnQ1NG90aExoVTVlRVcySEY1dlotd3VNQXRPQldDN2NJN29BIn0sInR5cCI6ImRwb3Arand0In0.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.PbrQv5tKD5Rqsf007AQZtMz646WsDhNAdO5UujhHtUiBRW4Mwvt3xlJrOVt67AqU6fCO9vwbRlpnhoWLUPWjOQ",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "crit header present",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImNyaXQiOlsiZXhwIl0sImV4cCI6MSwiandrIjp7ImNydiI6IlAtMjU2Iiwia3R5IjoiRUMiLCJ4Ijoick9hc2M0bF8zNWV1LUhqck0yVEh4U3JFNDJKeWQ2Z3FDZUNhT0hZQmg2OCIsInkiOiJhdFdUeW4zcnQ1NG90aExoVTVlRVcySEY1dlotd3VNQXRPQldDN2NJN29BIn0sInR5cCI6ImRwb3Arand0In0.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.ZHZH-SJrg7wShKbrXpPHBmNr7n4FFqWFp1YKxv8ywuajqrXj8UeI9R5K-dmh6Uhh7nPBm5LzCL4jvF3etlsnyA",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "proof longer than 2048 bytes",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkiLCJwYWQiOiJ4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHgifQ.4rJfoLNOLC2ypwAneyn7DjchfsQ9Mp5gqMsEw7x1effpv1pe_bRhy26QgwltAvSQgmpADAjIXFVAzo_b4Uu7EA",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "non-canonical base64url in the signature (trailing bits set)",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.dYu9y47U7w9LH5EWbdpH3W_N5LjKnM2RM-Kq73jHcR-3KAcJoZO55BfbnPMDj4G7q5ixdq9vPhrDluz8T2IhMx",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "jti missing",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwfQ.gbm6oihbEN7-nOb_XTAifBNS0rO_92dqlSoIbLbj6XOfbyfoc86teIbJM7_jShvGtfCMdRvEtF8fu2VrNZ8IRg",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "jti 129 characters",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqampqamoifQ._hgYMY6DGjDswhH2YKhXsn9EgOWLkttHT3MjWdBxVlPu8Neg_SzAu5vDhYtAW3jNV-IXsr1UOK_OqmeJtRVC5Q",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "htm lower-case post",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJwb3N0IiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwiaWF0IjoxNzkwMDAwMDAwLCJqdGkiOiJkak10ZG1WamRHOXkifQ.TcqIRBQhn8ggChexgmyrd3JxQhQl7wgKSKV6fuMhM5e79GxqekGZlizCi8SOpgen_iCotfURMRGO-MAPWjNV3Q",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "htu path with trailing slash",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token/",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuLyIsImlhdCI6MTc5MDAwMDAwMCwianRpIjoiZGpNdGRtVmpkRzl5In0.-QrMfJJHWgURbYuNSekuC5geKo_rRgZP-4YMnETQKis_Ju2OVOVUFsvgJ09wGrzKR6Hz39eD8s4rkSOKenvULw",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    },
+    {
+      "name": "iat missing",
+      "bound_jkt": "8hqjng57hkWw2_UDiJU5YyM6s_2R5H3AMWcKGSC9KGA",
+      "bound_issuer": "https://pb-1234.plumbox.me",
+      "htu": "https://pb-1234.plumbox.me/api/oauth/token",
+      "proof": "eyJhbGciOiJFUzI1NiIsImp3ayI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InJPYXNjNGxfMzVldS1IanJNMlRIeFNyRTQySnlkNmdxQ2VDYU9IWUJoNjgiLCJ5IjoiYXRXVHluM3J0NTRvdGhMaFU1ZUVXMkhGNXZaLXd1TUF0T0JXQzdjSTdvQSJ9LCJ0eXAiOiJkcG9wK2p3dCJ9.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9wYi0xMjM0LnBsdW1ib3gubWUvYXBpL29hdXRoL3Rva2VuIiwianRpIjoiZGpNdGRtVmpkRzl5In0.SCjLo3cT01bw1b5URupeM_m0sO4ZalL8Qpx_G4GRMldLQG0Jgxb5_LfgDDUKNUL41rYTPFX6cgyzmH0VeLKKGg",
+      "expect": {
+        "result": "invalid_dpop_proof",
+        "code_consumed": false
+      }
+    }
+  ],
+  "issuer_syntax": {
+    "accept": [
+      "https://pb-0b77a3692a6ea216d0bc583e4c6f22cb.plumbox.me",
+      "https://pb-0b77a3692a6ea216d0bc583e4c6f22cb-1a2b.plumbox.me",
+      "https://kkjoo.plumbox.me"
+    ],
+    "reject": [
+      "http://pb-1234.plumbox.me",
+      "https://pb-1234.plumbox.me/",
+      "https://pb-1234.plumbox.me/x",
+      "https://pb-1234.plumbox.me:8443",
+      "https://pb-1234.plumbox.me:443",
+      "https://u@pb-1234.plumbox.me",
+      "https://pb-1234.plumbox.me?x",
+      "https://pb-1234.plumbox.me#f",
+      "https://pb-1234-lan.plumbox.me",
+      "https://pb-1234-wan.plumbox.me",
+      "https://relay.plumbox.me",
+      "https://relay-us.plumbox.me",
+      "https://www.plumbox.me",
+      "https://api.plumbox.me",
+      "https://a.b.plumbox.me",
+      "https://plumbox.me",
+      "https://pb-1234.plumbox.me.evil.com",
+      "https://PB-1234.plumbox.me",
+      "HTTPS://pb-1234.plumbox.me",
+      "https://pb-1234.plumbox.me.",
+      "https://-pb.plumbox.me",
+      "https://pb_1234.plumbox.me",
+      " https://pb-1234.plumbox.me",
+      ""
+    ]
+  },
+  "dev_expectation": {
+    "_comment": "What a Dev(issuer) expectation accepts at construction (each SDK also gates Dev to debug builds / allowDev).",
+    "accept": [
+      "http://10.0.2.2:8080",
+      "http://10.0.3.2:8080",
+      "http://127.0.0.1:8080",
+      "http://localhost:8080",
+      "http://[::1]:8080",
+      "http://192.168.1.20:8080",
+      "https://dev-box.example.com",
+      "https://dev-box.example.com:8443"
+    ],
+    "reject": [
+      "http://pb-1234.plumbox.me",
+      "http://8.8.8.8:8080",
+      "http://10.0.2.2:8080/",
+      "http://u@10.0.2.2:8080",
+      "ftp://10.0.2.2",
+      "http://LOCALHOST:8080",
+      "http://10.0.2.2:8080?x",
+      "http://10.0.2.2:8080#f",
+      "10.0.2.2:8080"
+    ]
+  },
+  "callback_cases": [
+    {
+      "name": "discover on Auth Tab",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-1234.plumbox.me",
+            "match": "discovered"
+          }
+        }
+      ]
+    },
+    {
+      "name": "forged state is ignored and the real callback still completes",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "android_intent",
+          "input": "plumsample://auth/callback?code=x&iss=https%3A%2F%2Fpb-5678.plumbox.me&state=WRONG",
+          "delivered": "custom_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "ignored",
+            "reason": "state_mismatch",
+            "issuer": "",
+            "match": ""
+          }
+        },
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-1234.plumbox.me",
+            "match": "discovered"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth Tab transaction answered through the intent filter",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "android_intent",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "custom_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "channel_mismatch",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "duplicate iss",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&iss=https%3A%2F%2Fpb-5678.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "duplicate_param",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "deny without iss (C0)",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?error=access_denied&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "denied",
+            "reason": "access_denied",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "deny with iss (C1)",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?error=access_denied&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "denied",
+            "reason": "access_denied",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "success without iss",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "missing_iss",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "success without code",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "missing_code",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "-lan alias as iss",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234-lan.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "invalid_iss",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "upper-case scheme as iss",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=HTTPS%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "invalid_iss",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "http issuer is never discoverable",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=http%3A%2F%2F10.0.2.2%3A8080&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "invalid_iss",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "expired transaction",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 1801,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "expired",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "replayed callback",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-1234.plumbox.me",
+            "match": "discovered"
+          }
+        },
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "ignored",
+            "reason": "state_mismatch",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "discover on Custom Tab with the opt-out",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "custom_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": false
+        }
+      },
+      "steps": [
+        {
+          "entry": "android_intent",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "custom_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-1234.plumbox.me",
+            "match": "discovered"
+          }
+        }
+      ]
+    },
+    {
+      "name": "discover on Custom Tab without the opt-out (start refuses; validate refuses too)",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "custom_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "android_intent",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "custom_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "unverified_channel",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "known: exact match on Custom Tab",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "known",
+          "issuer": "https://pb-1234.plumbox.me"
+        },
+        "channel": "custom_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "android_intent",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "custom_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-1234.plumbox.me",
+            "match": "exact"
+          }
+        }
+      ]
+    },
+    {
+      "name": "known: another box on Auth Tab asks the user, who accepts",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "known",
+          "issuer": "https://pb-1234.plumbox.me"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-5678.plumbox.me&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "issuer_changed",
+            "reason": "",
+            "issuer": "https://pb-5678.plumbox.me",
+            "match": ""
+          }
+        },
+        {
+          "entry": "accept_issuer_change",
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-5678.plumbox.me",
+            "match": "confirmed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "known: another box on Custom Tab is rejected",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "known",
+          "issuer": "https://pb-1234.plumbox.me"
+        },
+        "channel": "custom_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "android_intent",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-5678.plumbox.me&state=s",
+          "delivered": "custom_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "issuer_mismatch",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "known: malformed iss on Auth Tab is not an issuer change",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "known",
+          "issuer": "https://pb-1234.plumbox.me"
+        },
+        "channel": "auth_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "auth_tab_result",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me%2F&state=s",
+          "delivered": "auth_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "invalid_iss",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "known on iOS: another box asks the user",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "known",
+          "issuer": "https://pb-1234.plumbox.me"
+        },
+        "channel": "as_web_auth",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "as_web_auth",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-5678.plumbox.me&state=s",
+          "delivered": "as_web_auth",
+          "age_s": 0,
+          "expect": {
+            "outcome": "issuer_changed",
+            "reason": "",
+            "issuer": "https://pb-5678.plumbox.me",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "iOS: state mismatch is a rejection (one session, one URL)",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "as_web_auth",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "as_web_auth",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=WRONG",
+          "delivered": "as_web_auth",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "state_mismatch",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "dev: exact issuer over loopback",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "dev",
+          "issuer": "http://10.0.2.2:8080"
+        },
+        "channel": "loopback",
+        "redirect_uri": "http://127.0.0.1:53682/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "js_url",
+          "input": "http://127.0.0.1:53682/callback?code=c&iss=http%3A%2F%2F10.0.2.2%3A8080&state=s",
+          "delivered": "loopback",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "http://10.0.2.2:8080",
+            "match": "dev"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dev: any other issuer",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "dev",
+          "issuer": "http://10.0.2.2:8080"
+        },
+        "channel": "loopback",
+        "redirect_uri": "http://127.0.0.1:53682/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "js_url",
+          "input": "http://127.0.0.1:53682/callback?code=c&iss=http%3A%2F%2F10.0.2.2%3A8081&state=s",
+          "delivered": "loopback",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "issuer_mismatch",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "JS loopback transaction, callback URL on another port is not ours",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "loopback",
+        "redirect_uri": "http://127.0.0.1:53682/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "js_url",
+          "input": "http://127.0.0.1:9999/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "none",
+          "age_s": 0,
+          "expect": {
+            "outcome": "ignored",
+            "reason": "not_our_redirect",
+            "issuer": "",
+            "match": ""
+          }
+        },
+        {
+          "entry": "js_url",
+          "input": "http://127.0.0.1:53682/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "loopback",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-1234.plumbox.me",
+            "match": "discovered"
+          }
+        }
+      ]
+    },
+    {
+      "name": "intent for another path of the same scheme is not ours",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "known",
+          "issuer": "https://pb-1234.plumbox.me"
+        },
+        "channel": "custom_tab",
+        "redirect_uri": "plumsample://auth/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "android_intent",
+          "input": "plumsample://auth/other?code=x&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "none",
+          "age_s": 0,
+          "expect": {
+            "outcome": "ignored",
+            "reason": "not_our_redirect",
+            "issuer": "",
+            "match": ""
+          }
+        },
+        {
+          "entry": "android_intent",
+          "input": "plumsample://auth/callback?code=c&iss=https%3A%2F%2Fpb-1234.plumbox.me&state=s",
+          "delivered": "custom_tab",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-1234.plumbox.me",
+            "match": "exact"
+          }
+        }
+      ]
+    },
+    {
+      "name": "JS loopback transaction fed through validateCallbackParams",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "loopback",
+        "redirect_uri": "http://127.0.0.1:53682/callback",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "js_params",
+          "input": {
+            "code": "c",
+            "iss": "https://pb-1234.plumbox.me",
+            "state": "s"
+          },
+          "delivered": "external",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "channel_mismatch",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "Obsidian deep link, known exact",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "known",
+          "issuer": "https://pb-1234.plumbox.me"
+        },
+        "channel": "external",
+        "redirect_uri": "obsidian://plum-sync",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "js_params",
+          "input": {
+            "code": "c",
+            "iss": "https://pb-1234.plumbox.me",
+            "state": "s"
+          },
+          "delivered": "external",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-1234.plumbox.me",
+            "match": "exact"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Obsidian deep link, known, iss rewritten",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "known",
+          "issuer": "https://pb-1234.plumbox.me"
+        },
+        "channel": "external",
+        "redirect_uri": "obsidian://plum-sync",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": true
+        }
+      },
+      "steps": [
+        {
+          "entry": "js_params",
+          "input": {
+            "code": "c",
+            "iss": "https://pb-evil.plumbox.me",
+            "state": "s"
+          },
+          "delivered": "external",
+          "age_s": 0,
+          "expect": {
+            "outcome": "rejected",
+            "reason": "issuer_mismatch",
+            "issuer": "",
+            "match": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "Obsidian deep link, discover with the opt-out",
+      "pending": {
+        "state": "s",
+        "expectation": {
+          "mode": "discover"
+        },
+        "channel": "external",
+        "redirect_uri": "obsidian://plum-sync",
+        "policy": {
+          "box_domain": "plumbox.me",
+          "require_verified_channel": false
+        }
+      },
+      "steps": [
+        {
+          "entry": "js_params",
+          "input": {
+            "code": "c",
+            "iss": "https://pb-1234.plumbox.me",
+            "state": "s"
+          },
+          "delivered": "external",
+          "age_s": 0,
+          "expect": {
+            "outcome": "authorized",
+            "reason": "",
+            "issuer": "https://pb-1234.plumbox.me",
+            "match": "discovered"
+          }
+        }
+      ]
+    }
+  ],
+  "start_cases": [
+    {
+      "name": "discover on Auth Tab",
+      "expectation": {
+        "mode": "discover"
+      },
+      "channel": "auth_tab",
+      "policy": {
+        "box_domain": "plumbox.me",
+        "require_verified_channel": true
+      },
+      "expect": {
+        "ok": true,
+        "entry_prefix": "https://plumbox.me/authorize?",
+        "fragment": ""
+      }
+    },
+    {
+      "name": "discover on Custom Tab, default policy",
+      "expectation": {
+        "mode": "discover"
+      },
+      "channel": "custom_tab",
+      "policy": {
+        "box_domain": "plumbox.me",
+        "require_verified_channel": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "verified_channel_unavailable"
+      }
+    },
+    {
+      "name": "discover on an external deep link, default policy",
+      "expectation": {
+        "mode": "discover"
+      },
+      "channel": "external",
+      "policy": {
+        "box_domain": "plumbox.me",
+        "require_verified_channel": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "verified_channel_unavailable"
+      }
+    },
+    {
+      "name": "discover on Custom Tab with the opt-out",
+      "expectation": {
+        "mode": "discover"
+      },
+      "channel": "custom_tab",
+      "policy": {
+        "box_domain": "plumbox.me",
+        "require_verified_channel": false
+      },
+      "expect": {
+        "ok": true,
+        "entry_prefix": "https://plumbox.me/authorize?",
+        "fragment": ""
+      }
+    },
+    {
+      "name": "known on Custom Tab starts at the portal with the box hint",
+      "expectation": {
+        "mode": "known",
+        "issuer": "https://pb-1234.plumbox.me"
+      },
+      "channel": "custom_tab",
+      "policy": {
+        "box_domain": "plumbox.me",
+        "require_verified_channel": true
+      },
+      "expect": {
+        "ok": true,
+        "entry_prefix": "https://plumbox.me/authorize?",
+        "fragment": "box=pb-1234"
+      }
+    },
+    {
+      "name": "known with an alias issuer",
+      "expectation": {
+        "mode": "known",
+        "issuer": "https://pb-1234-lan.plumbox.me"
+      },
+      "channel": "auth_tab",
+      "policy": {
+        "box_domain": "plumbox.me",
+        "require_verified_channel": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "invalid_known_issuer"
+      }
+    },
+    {
+      "name": "dev on the emulator starts at the dev box",
+      "expectation": {
+        "mode": "dev",
+        "issuer": "http://10.0.2.2:8080"
+      },
+      "channel": "auth_tab",
+      "policy": {
+        "box_domain": "plumbox.me",
+        "require_verified_channel": true
+      },
+      "expect": {
+        "ok": true,
+        "entry_prefix": "http://10.0.2.2:8080/authorize?",
+        "fragment": ""
+      }
+    },
+    {
+      "name": "dev with a public http host",
+      "expectation": {
+        "mode": "dev",
+        "issuer": "http://8.8.8.8:8080"
+      },
+      "channel": "auth_tab",
+      "policy": {
+        "box_domain": "plumbox.me",
+        "require_verified_channel": true
+      },
+      "expect": {
+        "ok": false,
+        "error": "invalid_dev_issuer"
+      }
+    }
+  ],
+  "channel_for_redirect": [
+    {
+      "redirect_uri": "http://127.0.0.1:53682/callback",
+      "channel": "loopback"
+    },
+    {
+      "redirect_uri": "http://localhost:8000/cb",
+      "channel": "loopback"
+    },
+    {
+      "redirect_uri": "http://[::1]:9000/cb",
+      "channel": "loopback"
+    },
+    {
+      "redirect_uri": "obsidian://plum-sync",
+      "channel": "external"
+    },
+    {
+      "redirect_uri": "plumsample://auth/callback",
+      "channel": "external"
+    },
+    {
+      "redirect_uri": "http://192.168.1.2:8000/cb",
+      "channel": "external"
+    }
+  ]
+}
