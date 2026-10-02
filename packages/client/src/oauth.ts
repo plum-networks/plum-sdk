@@ -6,8 +6,19 @@ import type { OAuthScope } from "./types.js";
 import { b64url, randomBytes, sha256 } from "./internal/crypto.js";
 
 /**
- * Delegated authorization (OAuth 2.0 Authorization Code + PKCE) for third-party
- * apps. The user authenticates on the Plum portal — NEVER inside your app — and
+ * LEGACY delegated authorization (OAuth 2.0 Authorization Code + PKCE), as
+ * shipped in 0.1/0.2. Superseded by the bound flow in authorize.ts
+ * (`startAuthorization` → `validateCallback` / `validateCallbackParams` →
+ * `completeAuthorization`). Kept unchanged, byte for byte, so apps built on it
+ * keep working: until a box's legacy cutoff date for custom-scheme redirects;
+ * loopback redirects are never cut off.
+ *
+ * Why it is superseded: nothing here checks the callback's `iss`, and the code
+ * is not bound to the app. An app that registers the same redirect scheme can
+ * rewrite `iss` and receive your code and verifier, then a token for the
+ * user's box.
+ *
+ * The user authenticates on the Plum portal — NEVER inside your app — and
  * your app receives only a scoped, revocable token, never the password.
  *
  * Two halves:
@@ -22,6 +33,7 @@ import { b64url, randomBytes, sha256 } from "./internal/crypto.js";
  * `injectedAdapter(requestUrl)` as `http`.
  */
 
+/** The portal that hosts `/authorize` for both the legacy and the bound flow. */
 export const DEFAULT_PORTAL_URL = "https://plumbox.me";
 
 export interface BeginAuthorizationOptions {
@@ -70,6 +82,10 @@ export interface ExchangeCodeOptions {
   http?: HttpAdapter;
 }
 
+/**
+ * @deprecated The legacy callback fields, unchecked. Use `validateCallback` /
+ * `validateCallbackParams`, which return an `AuthorizationOutcome`.
+ */
 export interface CallbackResult {
   code?: string;
   state?: string;
@@ -84,6 +100,10 @@ export interface CallbackResult {
  * (e.g. obsidian://plum-sync/callback?code=…&state=…&iss=…). Verify
  * `state === <the state from beginAuthorization>` yourself before exchanging —
  * a mismatch means a forged callback. Throws on a malformed URL.
+ *
+ * @deprecated `iss` is returned unchecked. Use `validateCallback(pending, url)`
+ * (or `validateCallbackParams` for a parsed record), which checks state, the
+ * redirect target, the channel and the issuer.
  */
 export function parseCallback(callbackUrl: string): CallbackResult {
   const u = new URL(callbackUrl);
@@ -94,6 +114,11 @@ export function parseCallback(callbackUrl: string): CallbackResult {
 /**
  * Build the portal authorization URL and the PKCE material. The verifier and
  * `state` must survive until the redirect comes back.
+ *
+ * @deprecated Use `startAuthorization`, which binds the code to this app's key
+ * and records which box may answer. Requests from this function carry no
+ * `dpop_jkt`, so boxes refuse them for custom-scheme redirects from their
+ * legacy cutoff date on.
  */
 export async function beginAuthorization(
   opts: BeginAuthorizationOptions,
@@ -133,6 +158,10 @@ export async function beginAuthorization(
  * Errors carry the box's OAuth code in `PlumApiError.code`:
  * `invalid_grant` (code used, expired or PKCE mismatch), `unauthorized_client`
  * (client_id not registered), `invalid_scope`, `invalid_redirect_uri`.
+ *
+ * @deprecated Use `completeAuthorization(outcome)`, which exchanges only at
+ * the validated issuer and proves possession of the key the code is bound to.
+ * This function sends the code wherever `baseUrl` points.
  */
 export async function exchangeCode(
   opts: ExchangeCodeOptions,
