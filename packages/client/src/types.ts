@@ -12,6 +12,15 @@ export interface DriveEntry {
    * indexing simply omit it; fall back to size+modTime comparison).
    */
   hash?: string;
+  /**
+   * `true` when the bytes live on another box of the owner's RAID set
+   * (capacity expansion) rather than this one. The entry is part of the
+   * Drive like any other — recursive listings and searches include it, and
+   * `download` streams it from that box — but it can be slower, and fails
+   * while that box is offline. For a folder, it exists only on a peer.
+   * Absent for local entries.
+   */
+  remote?: boolean;
 }
 
 export interface TokenInfo {

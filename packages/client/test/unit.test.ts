@@ -330,6 +330,22 @@ describe("drive: incomplete listings", () => {
       server.close();
     }
   });
+
+  it("entries held by a RAID peer keep remote: true", async () => {
+    const { adapter } = mockAdapter(() =>
+      textResponse(200, JSON.stringify({
+        items: [
+          { name: "local.txt", path: "/local.txt", isDir: false, size: 1, modTime: "2026-01-01T00:00:00Z" },
+          { name: "peer.bin", path: "/peer.bin", isDir: false, size: 5, modTime: "2026-01-01T00:00:00Z", remote: true },
+        ],
+        total: 2, limit: 1000, offset: 0,
+      })),
+    );
+    const client = new PlumClient({ baseUrl: "https://x", token: "t", http: adapter });
+    const got = [];
+    for await (const e of client.drive.listAll("/", { recursive: true })) got.push(e);
+    expect(got.map((e) => [e.path, e.remote])).toEqual([["/local.txt", undefined], ["/peer.bin", true]]);
+  });
 });
 
 describe("buildMultipart", () => {
