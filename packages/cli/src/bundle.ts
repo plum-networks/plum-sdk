@@ -1,12 +1,13 @@
 // Packaging and signing, byte-compatible with the box's trust package:
 // META/MANIFEST.sha256 lists "<sha256hex>  <path>" for every non-META file,
 // sorted by path bytes; META/publisher.pub, META/publisher.sig (signature over
-// "plum-publisher-v1\n" + MANIFEST), optional META/recovery.pub and
-// META/rotation.json.
+// "plum-publisher-v1\n" + MANIFEST), optional META/recovery.pub with
+// META/recovery.sig (signature over "plum-recovery-v1\n" + app id + "\n" +
+// recovery key), and optional META/rotation.json.
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { b64url, formatPublicKey, kid, parsePublicKey, PURPOSE_PUBLISHER, signPayload, verifyPayload, type PublisherKey, type Rotation } from './keys.js';
+import { b64url, decodeSig, formatPublicKey, kid, parsePublicKey, PURPOSE_PUBLISHER, PURPOSE_RECOVERY, recoveryPayload, signPayload, verifyPayload, type PublisherKey, type Rotation } from './keys.js';
 import { checkElf, MAX_BUNDLE_FILES, MAX_ENTRY_BYTES, MAX_PLU_BYTES, validateManifest, type Manifest, type Problem } from './manifest.js';
 import { readZip, writeZip, type ZipEntry } from './zip.js';
 
@@ -15,9 +16,20 @@ export const META_MANIFEST = 'META/MANIFEST.sha256';
 export const META_PUBLISHER = 'META/publisher.pub';
 export const META_SIGNATURE = 'META/publisher.sig';
 export const META_RECOVERY = 'META/recovery.pub';
+/**
+ * The publisher's signature over (app id, recovery key). MANIFEST covers only
+ * the app's files, so META/recovery.pub on its own is signed by nobody: anyone
+ * who re-zips a genuine bundle can swap it. A box therefore records a changed
+ * recovery key from a direct install only when this verifies (plum-box-core
+ * trust.RecoveryToRecord). Boxes that predate it ignore the entry.
+ */
+export const META_RECOVERY_SIG = 'META/recovery.sig';
 export const META_ROTATION = 'META/rotation.json';
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'META']);
+// The box's caps on META/*.pub and META/*.sig (trust.maxKeyBytes / maxSigBytes).
+const MAX_META_KEY_BYTES = 256;
+const MAX_META_SIG_BYTES = 256;
 
 /** Collects files under dir (skipping VCS, node_modules, dotfiles, META/). */
 export function collectFiles(dir: string, ignore: string[] = []): ZipEntry[] {
@@ -84,7 +96,17 @@ export function signBundle(entries: ZipEntry[], opts: SignOptions): Buffer {
     { name: META_PUBLISHER, data: Buffer.from(formatPublicKey(opts.key.pub) + '\n') },
     { name: META_SIGNATURE, data: Buffer.from(b64url.encode(sig) + '\n') },
   ];
-  if (opts.recoveryPub) meta.push({ name: META_RECOVERY, data: Buffer.from(formatPublicKey(opts.recoveryPub) + '\n') });
+  if (opts.recoveryPub) {
+    if (opts.recoveryPub.length !== 32) throw new Error(`recovery key: ${opts.recoveryPub.length} bytes, want 32`);
+    meta.push({ name: META_RECOVERY, data: Buffer.from(formatPublicKey(opts.recoveryPub) + '\n') });
+    // Same rule as the box's own signer (trust.Signer.SignZip): sign the
+    // recovery key whenever one is published and manifest.json names an id.
+    const appId = manifestAppId(files);
+    if (appId) {
+      const rsig = signPayload(opts.key, PURPOSE_RECOVERY, recoveryPayload(appId, opts.recoveryPub));
+      meta.push({ name: META_RECOVERY_SIG, data: Buffer.from(b64url.encode(rsig) + '\n') });
+    }
+  }
   if (opts.rotation) meta.push({ name: META_ROTATION, data: Buffer.from(JSON.stringify(opts.rotation, null, 2) + '\n') });
   const out = writeZip([...files, ...meta]);
   if (out.length > MAX_PLU_BYTES) throw new Error(`.plu is ${out.length} bytes; max ${MAX_PLU_BYTES}`);
@@ -96,18 +118,92 @@ export function resignPlu(plu: Buffer, opts: SignOptions): Buffer {
   return signBundle(readZip(plu), opts);
 }
 
-/** Inspects a .plu: signer, covered files, whether the signature verifies. */
-export function inspectPlu(plu: Buffer): { publisher?: string; recovery?: string; files: string[]; signed: boolean } {
+/**
+ * The app id META/recovery.sig is bound to: manifest.json's "id". '' when there
+ * is no manifest.json, it is not a JSON object, or "id" is not a string — the
+ * cases where the box's signer (trust.manifestAppID) writes no recovery.sig.
+ */
+export function manifestAppId(entries: ZipEntry[]): string {
+  const m = entries.find((e) => e.name === 'manifest.json');
+  if (!m) return '';
+  try {
+    const v = JSON.parse(m.data.toString('utf8')) as unknown;
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return '';
+    const id = (v as { id?: unknown }).id;
+    return typeof id === 'string' ? id : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * What a box makes of META/recovery.pub (trust.Bundle.RecoveryBound):
+ * - 'signed':   META/recovery.sig verifies under META/publisher.pub for
+ *               manifest.json's id — a box records this key even when it
+ *               differs from the one on file;
+ * - 'unsigned': no recovery.sig — a box adopts the key on a first install
+ *               only, never as a change (unless the store vouches for the zip);
+ * - 'invalid':  a recovery.sig that does not verify for this key, publisher
+ *               and app id (a malformed one fails verification outright).
+ */
+export type RecoveryStatus = 'signed' | 'unsigned' | 'invalid';
+
+/** trust.Bundle.RecoveryBound: sig is the publisher's over (manifest.json id, rec). */
+function recoveryBound(pub: Buffer, rec: Buffer, sig: Buffer, files: ZipEntry[]): boolean {
+  const appId = manifestAppId(files);
+  return appId !== '' && verifyPayload(pub, PURPOSE_RECOVERY, recoveryPayload(appId, rec), sig);
+}
+
+function recoveryStatus(entries: ZipEntry[]): RecoveryStatus | undefined {
+  const meta = new Map(entries.filter((e) => e.name.startsWith(META_DIR)).map((e) => [e.name, e.data]));
+  const recText = meta.get(META_RECOVERY);
+  if (!recText) return undefined;
+  const sigText = meta.get(META_RECOVERY_SIG);
+  if (!sigText) return 'unsigned';
+  try {
+    const pub = parsePublicKey(meta.get(META_PUBLISHER)?.toString('utf8') ?? '');
+    const rec = parsePublicKey(recText.toString('utf8'));
+    const files = entries.filter((e) => !e.name.startsWith(META_DIR));
+    return recoveryBound(pub, rec, decodeSig(sigText.toString('utf8')), files) ? 'signed' : 'invalid';
+  } catch {
+    return 'invalid';
+  }
+}
+
+/** Inspects a .plu: signer, recovery key (and whether it is signed), covered files, whether the signature verifies. */
+export function inspectPlu(plu: Buffer): { publisher?: string; recovery?: string; recoverySig?: RecoveryStatus; files: string[]; signed: boolean } {
   const entries = readZip(plu);
   const meta = new Map(entries.filter((e) => e.name.startsWith(META_DIR)).map((e) => [e.name, e.data]));
   const files = entries.filter((e) => !e.name.startsWith(META_DIR)).map((e) => e.name).sort();
   const pub = meta.get(META_PUBLISHER)?.toString('utf8').trim();
   const rec = meta.get(META_RECOVERY)?.toString('utf8').trim();
-  return { publisher: pub, recovery: rec, files, signed: meta.has(META_SIGNATURE) && meta.has(META_MANIFEST) && !!pub };
+  return {
+    publisher: pub,
+    recovery: rec,
+    ...(rec !== undefined ? { recoverySig: recoveryStatus(entries) } : {}),
+    files,
+    signed: meta.has(META_SIGNATURE) && meta.has(META_MANIFEST) && !!pub,
+  };
 }
 
-/** Verifies a .plu the way the box does (signature + exact file coverage). */
-export function verifyPlu(plu: Buffer): { ok: true; publisher: string; kid: string; files: number } | { ok: false; reason: string } {
+export type VerifyResult =
+  | {
+      ok: true;
+      publisher: string;
+      kid: string;
+      files: number;
+      /** META/recovery.pub, and whether META/recovery.sig binds it to this publisher and app id. */
+      recovery?: { key: string; kid: string; signed: boolean };
+    }
+  | { ok: false; reason: string };
+
+/**
+ * Verifies a .plu the way the box does (signature + exact file coverage). Like
+ * trust.VerifyZip, a malformed META/recovery.pub or META/recovery.sig fails
+ * the whole bundle; one that is well-formed but does not verify only means the
+ * recovery key is not bound (`recovery.signed: false`).
+ */
+export function verifyPlu(plu: Buffer): VerifyResult {
   const entries = readZip(plu);
   const meta = new Map(entries.filter((e) => e.name.startsWith(META_DIR)).map((e) => [e.name, e.data]));
   const files = new Map(entries.filter((e) => !e.name.startsWith(META_DIR)).map((e) => [e.name, e.data]));
@@ -137,7 +233,32 @@ export function verifyPlu(plu: Buffer): { ok: true; publisher: string; kid: stri
   for (const [p, want] of listed) {
     if (createHash('sha256').update(files.get(p)!).digest('hex') !== want) return { ok: false, reason: `"${p}" does not match its listed hash` };
   }
-  return { ok: true, publisher: formatPublicKey(pub), kid: kid(pub), files: files.size };
+  const recText = meta.get(META_RECOVERY);
+  const recSig = meta.get(META_RECOVERY_SIG);
+  let rec: Buffer | undefined;
+  if (recText) {
+    if (recText.length > MAX_META_KEY_BYTES) return { ok: false, reason: `${META_RECOVERY} too large` };
+    try {
+      rec = parsePublicKey(recText.toString('utf8'));
+    } catch (e) {
+      return { ok: false, reason: `recovery key: ${(e as Error).message}` };
+    }
+  }
+  let rsig: Buffer | undefined;
+  if (recSig) {
+    if (recSig.length > MAX_META_SIG_BYTES) return { ok: false, reason: `${META_RECOVERY_SIG} too large` };
+    try {
+      rsig = decodeSig(recSig.toString('utf8'));
+    } catch (e) {
+      return { ok: false, reason: `recovery signature: ${(e as Error).message}` };
+    }
+  }
+  const out: VerifyResult & { ok: true } = { ok: true, publisher: formatPublicKey(pub), kid: kid(pub), files: files.size };
+  if (rec) {
+    const signed = !!rsig && recoveryBound(pub, rec, rsig, [...files].map(([name, data]) => ({ name, data })));
+    out.recovery = { key: formatPublicKey(rec), kid: kid(rec), signed };
+  }
+  return out;
 }
 
 

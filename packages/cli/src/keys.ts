@@ -8,6 +8,8 @@ import { dirname } from 'node:path';
 
 export const PURPOSE_PUBLISHER = 'plum-publisher-v1';
 export const PURPOSE_ROTATION = 'plum-rotation-v1';
+/** The publisher vouching for a recovery key (META/recovery.sig). */
+export const PURPOSE_RECOVERY = 'plum-recovery-v1';
 const KEY_FILE_PREFIX = 'plum-key-v1\n';
 
 export const b64url = {
@@ -84,8 +86,34 @@ export function signPayload(key: PublisherKey, purpose: string, payload: Uint8Ar
 }
 
 export function verifyPayload(pub: Buffer, purpose: string, payload: Uint8Array, sig: Uint8Array): boolean {
+  if (pub.length !== 32 || sig.length !== 64) return false;
   const publicKey = createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x: b64url.encode(pub) }, format: 'jwk' });
   return verify(null, signingInput(purpose, payload), publicKey, sig);
+}
+
+/**
+ * Decodes a signature file the way the box does (trust.DecodeSig): surrounding
+ * whitespace trimmed, unpadded base64url, exactly 64 bytes. Buffer's own
+ * base64url decoder skips characters it does not know, so check first.
+ */
+export function decodeSig(s: string): Buffer {
+  const t = s.trim();
+  if (!/^[A-Za-z0-9_-]*$/.test(t) || t.length % 4 === 1) throw new Error('signature: not unpadded base64url');
+  const raw = b64url.decode(t);
+  if (raw.length !== 64) throw new Error(`signature: ${raw.length} bytes, want 64`);
+  return raw;
+}
+
+/**
+ * What META/recovery.sig signs (after the "plum-recovery-v1\n" purpose line):
+ * the app id and the recovery key in its canonical "ed25519:<base64url>" form,
+ * joined by one newline, no trailing newline — trust.RecoveryPayload in
+ * plum-box-core. The key is re-rendered from its 32 raw bytes, never copied
+ * from recovery.pub, so whitespace or a trailing newline in that file cannot
+ * change what is signed.
+ */
+export function recoveryPayload(appId: string, recoveryPub: Buffer): Buffer {
+  return Buffer.from(appId + '\n' + formatPublicKey(recoveryPub), 'utf8');
 }
 
 export interface Rotation {

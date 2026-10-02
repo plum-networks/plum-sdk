@@ -116,6 +116,22 @@ describe('plum-dev against a fake box', () => {
     expect(inst.headers['content-type']).toBe('application/zip');
     expect(inst.url).toBe('/api/apps/install?app_id=dev.tester.hello');
     expect(verifyPlu(inst.body).ok).toBe(true);
+    // keygen left recovery.pub in the config dir, so the bundle carries it,
+    // signed by the publisher key for this app id.
+    expect(verifyPlu(inst.body)).toMatchObject({ ok: true, recovery: { signed: true } });
+  });
+
+  it('package signs the recovery key and inspect says so', async () => {
+    const out = join(work, 'hello.plu');
+    await run('package', join(work, 'hello'), '-o', out);
+    const text = await run('inspect', out);
+    expect(text).toMatch(/^recovery {3}ed25519:\S+ {2}kid pub-[0-9a-f]{16} {2}signed by the publisher \(META\/recovery\.sig\)$/m);
+    const json = JSON.parse(await run('inspect', out, '--json')) as { recoverySig?: string; verify: { recovery?: { signed: boolean } } };
+    expect(json.recoverySig).toBe('signed');
+    expect(json.verify.recovery?.signed).toBe(true);
+    // --no-recovery leaves both files out.
+    await run('package', join(work, 'hello'), '-o', out, '--no-recovery');
+    expect(JSON.parse(await run('inspect', out, '--json'))).not.toHaveProperty('recoverySig');
   });
 
   it('push refuses a bundle that fails validation before touching the box', async () => {

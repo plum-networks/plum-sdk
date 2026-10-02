@@ -301,7 +301,14 @@ async function cmdInspect(a: Args) {
   const v = verifyPlu(buf);
   if (a.flags.json) { console.log(JSON.stringify({ ...info, verify: v }, null, 2)); return; }
   console.log(`publisher  ${info.publisher ?? '(unsigned)'}${info.publisher ? '  kid ' + kid(parsePublicKey(info.publisher)) : ''}`);
-  if (info.recovery) console.log(`recovery   ${info.recovery}  kid ${kid(parsePublicKey(info.recovery))}`);
+  if (info.recovery) {
+    const how = {
+      signed: 'signed by the publisher (META/recovery.sig)',
+      unsigned: 'NOT signed — a box adopts it on a first install only; re-sign (plum-dev sign) to add META/recovery.sig',
+      invalid: 'META/recovery.sig does NOT verify for this publisher key and app id — a box ignores this recovery key',
+    }[info.recoverySig ?? 'unsigned'];
+    console.log(`recovery   ${info.recovery}  kid ${kid(parsePublicKey(info.recovery))}  ${how}`);
+  }
   console.log(`signature  ${v.ok ? 'verifies' : v.reason}`);
   console.log(`files      ${info.files.length}`);
   for (const f of info.files) console.log(`  ${f}`);
