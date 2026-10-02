@@ -6,3 +6,6 @@ dist/
 # Scratch: agent worktrees and anything a smoke test scaffolds here.
 .claude/
 hello/
+
+# DPoP cross-check output (PLUM_DPOP_CROSSCHECK_DIR=test/.out/dpop-crosscheck)
+packages/client/test/.out/
