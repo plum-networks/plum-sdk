@@ -3,9 +3,9 @@
 // /apps/<id>/, injects the mock SDK when the page asks for plum-sdk.js, and
 // proxies /apps/<id>/svc/* to --service with the identity headers core would
 // set. Nothing here touches a box.
-import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const MIME: Record<string, string> = {
@@ -31,11 +31,60 @@ function mockSdkPath(): string {
   throw new Error('plum-sdk-mock.js not found next to the CLI');
 }
 
+/** True when `path` is `root` itself or below it — by path segments, not by string prefix. */
+export function isInside(root: string, path: string): boolean {
+  const rel = relative(root, path);
+  return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel));
+}
+
+/**
+ * The file a request for `rel` may be served from, or null. It has to be a
+ * regular file inside `root` (a real path) both as named and after following
+ * links, so neither `..`, a same-prefix sibling (`/work/demo-backup` next to
+ * `/work/demo`) nor a link out of the app dir reaches anything else.
+ */
+export function servedFile(root: string, rel: string): string | null {
+  const file = resolve(root, rel);
+  if (!isInside(root, file)) return null;
+  let real: string;
+  try {
+    real = realpathSync(file);
+  } catch {
+    return null;
+  }
+  if (!isInside(root, real)) return null;
+  try {
+    return statSync(real).isFile() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Only a loopback name may address this server. It listens on 127.0.0.1, but
+ * a web page can still reach it by DNS rebinding — its own hostname resolving
+ * to 127.0.0.1 — and that request carries the page's hostname, not ours.
+ */
+export function isLoopbackHost(host: string | undefined): boolean {
+  if (!host) return false;
+  let name: string;
+  try {
+    name = new URL(`http://${host}`).hostname;
+  } catch {
+    return false;
+  }
+  return name === 'localhost' || name.endsWith('.localhost') || name === '[::1]' || /^127(\.\d{1,3}){3}$/.test(name);
+}
+
 export function startServe(o: ServeOptions): Promise<{ url: string; close: () => void }> {
-  const root = resolve(o.dir);
+  const root = realpathSync(resolve(o.dir));
   const prefix = `/apps/${o.appId}/`;
   const prelude = `<script>window.__PLUM_APP__=${JSON.stringify({ id: o.appId, perms: o.perms, version: 'dev', token: 'dev' })};</script>`;
   const server = createServer((req, res) => {
+    if (!isLoopbackHost(req.headers.host)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      return res.end('plum-dev serve answers only to localhost / 127.0.0.1');
+    }
     const url = new URL(req.url || '/', 'http://localhost');
     if (url.pathname === '/' || url.pathname === '/apps' || url.pathname === '/apps/') {
       res.writeHead(302, { Location: prefix });
@@ -50,10 +99,20 @@ export function startServe(o: ServeOptions): Promise<{ url: string; close: () =>
       res.writeHead(404);
       return res.end('not found');
     }
-    let rel = decodeURIComponent(url.pathname.slice(prefix.length));
+    let rel: string;
+    try {
+      rel = decodeURIComponent(url.pathname.slice(prefix.length));
+    } catch {
+      res.writeHead(400);
+      return res.end('bad request');
+    }
+    if (rel.includes('\0')) {
+      res.writeHead(400);
+      return res.end('bad request');
+    }
     if (rel === '' || rel.endsWith('/')) rel += 'index.html';
-    const file = normalize(join(root, rel));
-    if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) {
+    const file = servedFile(root, rel);
+    if (!file) {
       res.writeHead(404);
       return res.end('not found');
     }
