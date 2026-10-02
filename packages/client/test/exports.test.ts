@@ -79,6 +79,7 @@ describe("public exports", () => {
       "AppsApi",
       "PlumApiError",
       "PlumAuthError",
+      "ListingIncompleteError",
       "discover",
       "beginAuthorization",
       "exchangeCode",

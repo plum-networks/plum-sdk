@@ -158,7 +158,7 @@ export class PlumClient {
       ? opts.allowStatus.includes(res.status)
       : res.status >= 200 && res.status < 300;
     if (!ok) {
-      const err = errorFromResponse(res.status, responseText(res));
+      const err = errorFromResponse(res.status, responseText(res), res.headers);
       if (err instanceof PlumAuthError) this.onAuthError?.(err);
       throw err;
     }

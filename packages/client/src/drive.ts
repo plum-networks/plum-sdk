@@ -1,4 +1,5 @@
 import type { PlumClient } from "./client.js";
+import type { ListingIncompleteError, PlumApiError } from "./errors.js";
 import { buildMultipart, responseJSON, toArrayBuffer } from "./http.js";
 import type { DriveEntry, FileVersion, ListOptions, TrashEntry, UploadOptions } from "./types.js";
 
@@ -28,7 +29,15 @@ function basename(path: string): string {
 export class DriveApi {
   constructor(private client: PlumClient) {}
 
-  /** List one page. Pass limit/offset for pagination; see `listAll` for iteration. */
+  /**
+   * List one page. Pass limit/offset for pagination; see `listAll` for iteration.
+   *
+   * Any non-2xx answer throws. A recursive listing the box could not complete
+   * (a folder it failed to read) throws {@link ListingIncompleteError} — a
+   * 503, never a shorter 200 — so a missing entry in a listing you got back
+   * really is missing. Entries held by another box of a RAID set carry
+   * `remote: true`.
+   */
   async list(path: string, opts: ListOptions = {}): Promise<ListPage> {
     const params = new URLSearchParams({ path: path || "/" });
     if (opts.recursive) params.set("recursive", "1");
@@ -43,7 +52,15 @@ export class DriveApi {
     return responseJSON<ListPage>(res);
   }
 
-  /** Iterate every entry under `path`, transparently walking pages. */
+  /**
+   * Iterate every entry under `path`, transparently walking pages.
+   *
+   * Errors propagate out of the loop; nothing is retried or skipped. If it
+   * throws partway — {@link ListingIncompleteError} on any page, or any other
+   * {@link PlumApiError} — the entries already yielded are NOT the folder's
+   * contents: discard them, and never diff a sync baseline against them.
+   * List again later (after `err.retryAfterMs` when set).
+   */
   async *listAll(
     path: string,
     opts: Omit<ListOptions, "limit" | "offset"> = {},

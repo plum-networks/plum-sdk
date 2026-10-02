@@ -16,7 +16,7 @@ export type {
   ExchangeCodeOptions,
   CallbackResult,
 } from "./oauth.js";
-export { PlumApiError, PlumAuthError } from "./errors.js";
+export { PlumApiError, PlumAuthError, ListingIncompleteError } from "./errors.js";
 export { fetchAdapter } from "./adapters/fetch.js";
 export { injectedAdapter } from "./adapters/inject.js";
 export type { RequestUrlLike } from "./adapters/inject.js";

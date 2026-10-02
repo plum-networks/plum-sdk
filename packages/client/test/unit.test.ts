@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { fetchAdapter } from "../src/adapters/fetch.js";
 import { PlumClient } from "../src/client.js";
-import { PlumApiError, PlumAuthError } from "../src/errors.js";
+import { ListingIncompleteError, parseRetryAfter, PlumApiError, PlumAuthError } from "../src/errors.js";
 import type { HttpAdapter, HttpRequest, HttpResponse } from "../src/http.js";
 import { buildMultipart, parseSessionCookie } from "../src/http.js";
 
@@ -209,6 +210,125 @@ describe("drive", () => {
     await client.drive.remove("/x/d");
     expect(requests[3]!.method).toBe("DELETE");
     expect(new URL(requests[3]!.url).searchParams.get("path")).toBe("/x/d");
+  });
+});
+
+// What plum-box-core answers when a recursive listing could not read every
+// folder (internal/drive/list.go): 503 + this body, never a shorter 200.
+const INCOMPLETE_BODY = JSON.stringify({
+  error: "listing_incomplete",
+  message: "Some folders could not be read, so the listing would be incomplete",
+});
+
+function entriesPage(offset: number, n: number, total: number, extra: Record<string, unknown> = {}): string {
+  const items = Array.from({ length: n }, (_, i) => ({
+    name: `f${offset + i}`,
+    path: `/f${offset + i}`,
+    isDir: false,
+    size: 1,
+    modTime: "2026-01-01T00:00:00Z",
+    ...extra,
+  }));
+  return JSON.stringify({ items, total, limit: 1000, offset });
+}
+
+/** Rejection value of p, failing the test if p resolves. */
+async function rejection<T = unknown>(p: Promise<unknown>): Promise<T> {
+  return p.then(
+    (): never => { throw new Error("resolved; it was supposed to reject"); },
+    (e: unknown) => e as T,
+  );
+}
+
+describe("drive: incomplete listings", () => {
+  it("a 503 listing_incomplete is a ListingIncompleteError, not an empty page", async () => {
+    const { adapter } = mockAdapter(() => textResponse(503, INCOMPLETE_BODY, { "content-type": "application/json" }));
+    const client = new PlumClient({ baseUrl: "https://x", token: "t", http: adapter });
+    const err = await rejection<ListingIncompleteError>(client.drive.list("/", { recursive: true }));
+    expect(err).toBeInstanceOf(ListingIncompleteError);
+    expect(err).toBeInstanceOf(PlumApiError); // existing `catch (e instanceof PlumApiError)` still sees it
+    expect(err.name).toBe("ListingIncompleteError");
+    expect(err.status).toBe(503);
+    expect(err.code).toBe("listing_incomplete");
+    expect(err.message).toMatch(/could not be read/);
+    expect(err.retryAfterMs).toBeUndefined(); // core sends no Retry-After today
+  });
+
+  it("listAll throws on the first page instead of yielding nothing", async () => {
+    const { adapter } = mockAdapter(() => textResponse(503, INCOMPLETE_BODY));
+    const client = new PlumClient({ baseUrl: "https://x", token: "t", http: adapter });
+    const seen: string[] = [];
+    const err = await rejection((async () => {
+      for await (const e of client.drive.listAll("/", { recursive: true })) seen.push(e.path);
+    })());
+    expect(err).toBeInstanceOf(ListingIncompleteError);
+    expect(seen).toEqual([]);
+  });
+
+  it("listAll throws when a later page is incomplete rather than ending early", async () => {
+    const { adapter, requests } = mockAdapter((req) => {
+      const offset = Number(new URL(req.url).searchParams.get("offset"));
+      return offset === 0 ? textResponse(200, entriesPage(0, 1000, 1500)) : textResponse(503, INCOMPLETE_BODY, { "retry-after": "30" });
+    });
+    const client = new PlumClient({ baseUrl: "https://x", token: "t", http: adapter });
+    let count = 0;
+    const err = await rejection<ListingIncompleteError>((async () => {
+      for await (const _ of client.drive.listAll("/", { recursive: true })) count++;
+    })());
+    expect(err).toBeInstanceOf(ListingIncompleteError);
+    expect(err.retryAfterMs).toBe(30_000);
+    expect(count).toBe(1000); // what it yielded before the throw — the caller must discard it
+    expect(requests).toHaveLength(2); // and nothing was retried behind the caller's back
+  });
+
+  it("other non-2xx answers throw a PlumApiError with Retry-After, never an empty list", async () => {
+    for (const [status, body, headers] of [
+      [500, "readdir failed", {}],
+      [502, "", {}],
+      [503, `{"error":"box_offline","message":"the box is not reachable"}`, { "retry-after": "5" }],
+      [429, `{"error":"rate_limited"}`, { "retry-after": "Fri, 02 Oct 2026 12:00:10 GMT" }],
+    ] as Array<[number, string, Record<string, string>]>) {
+      const { adapter } = mockAdapter(() => textResponse(status, body, headers));
+      const client = new PlumClient({ baseUrl: "https://x", token: "t", http: adapter });
+      const err = await rejection<PlumApiError>((async () => {
+        for await (const _ of client.drive.listAll("/", { recursive: true })) { /* nothing */ }
+      })());
+      expect(err).toBeInstanceOf(PlumApiError);
+      expect(err).not.toBeInstanceOf(ListingIncompleteError);
+      expect(err.status).toBe(status);
+      if (headers["retry-after"] === "5") expect(err.retryAfterMs).toBe(5000);
+      if (status === 429) expect(err.retryAfterMs).toBeTypeOf("number");
+    }
+  });
+
+  it("parseRetryAfter reads delta-seconds and HTTP-dates", () => {
+    const now = Date.parse("Fri, 02 Oct 2026 12:00:00 GMT");
+    expect(parseRetryAfter(undefined, now)).toBeUndefined();
+    expect(parseRetryAfter("0", now)).toBe(0);
+    expect(parseRetryAfter(" 120 ", now)).toBe(120_000);
+    expect(parseRetryAfter("Fri, 02 Oct 2026 12:00:10 GMT", now)).toBe(10_000);
+    expect(parseRetryAfter("Fri, 02 Oct 2026 11:00:00 GMT", now)).toBe(0); // in the past
+    for (const bad of ["", "soon", "-1", "1.5"]) expect(parseRetryAfter(bad, now), bad).toBeUndefined();
+  });
+
+  it("over real HTTP (fetchAdapter): 503 + Retry-After reaches the caller", async () => {
+    const { createServer } = await import("node:http");
+    const server = createServer((_req, res) => {
+      res.writeHead(503, { "Content-Type": "application/json", "Retry-After": "12" });
+      res.end(INCOMPLETE_BODY);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const { port } = server.address() as { port: number };
+      const client = new PlumClient({ baseUrl: `http://127.0.0.1:${port}`, token: "t", http: fetchAdapter });
+      const err = await rejection<ListingIncompleteError>((async () => {
+        for await (const _ of client.drive.listAll("/", { recursive: true })) { /* nothing */ }
+      })());
+      expect(err).toBeInstanceOf(ListingIncompleteError);
+      expect(err.retryAfterMs).toBe(12_000);
+    } finally {
+      server.close();
+    }
   });
 });
 
