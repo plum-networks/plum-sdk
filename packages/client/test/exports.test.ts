@@ -85,6 +85,15 @@ describe("public exports", () => {
       "exchangeCode",
       "parseCallback",
       "injectedAdapter",
+      "startAuthorization",
+      "validateCallback",
+      "validateCallbackParams",
+      "acceptIssuerChange",
+      "completeAuthorization",
+      "serializePendingAuthorization",
+      "deserializePendingAuthorization",
+      "discardPendingAuthorization",
+      "PlumOAuthError",
     ]) {
       expect(typeof (entry as Record<string, unknown>)[name], name).toBe("function");
     }

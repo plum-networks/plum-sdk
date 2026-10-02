@@ -16,7 +16,26 @@ export type {
   ExchangeCodeOptions,
   CallbackResult,
 } from "./oauth.js";
+export {
+  startAuthorization,
+  validateCallback,
+  validateCallbackParams,
+  acceptIssuerChange,
+  completeAuthorization,
+  serializePendingAuthorization,
+  deserializePendingAuthorization,
+  discardPendingAuthorization,
+} from "./authorize.js";
+export type {
+  StartAuthorizationOptions,
+  IssuerExpectation,
+  IssuerPolicy,
+  PendingAuthorization,
+  AuthorizationOutcome,
+  Grant,
+} from "./authorize.js";
 export { PlumApiError, PlumAuthError, ListingIncompleteError } from "./errors.js";
+export { PlumOAuthError } from "./errors.js";
 export { fetchAdapter } from "./adapters/fetch.js";
 export { injectedAdapter } from "./adapters/inject.js";
 export type { RequestUrlLike } from "./adapters/inject.js";

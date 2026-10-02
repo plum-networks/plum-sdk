@@ -45,6 +45,41 @@ export class ListingIncompleteError extends PlumApiError {
 }
 
 /**
+ * The bound OAuth flow (`startAuthorization` … `completeAuthorization`)
+ * stopped on this device, before or without any box answer. `code` is
+ * machine-readable:
+ *
+ * - `verified_channel_unavailable`: Discover needs an isolated callback
+ *   (a loopback redirect); this redirect is a deep link any app can claim.
+ *   Reconnect with a Known issuer, or connect from a desktop first.
+ * - `invalid_known_issuer`: the stored issuer is not a box issuer; start
+ *   with Discover instead.
+ * - `dev_not_allowed`, `invalid_dev_issuer`: Dev needs `policy.allowDev`
+ *   and an emulator/LAN issuer.
+ * - `invalid_request`: a required option is missing or malformed.
+ * - `invalid_pending`: not a transaction this SDK created or serialized.
+ * - `not_persistable`: serializing a transaction started without
+ *   `persistable: true`.
+ * - `invalid_outcome`: `completeAuthorization` was given something other
+ *   than an authorized outcome this SDK produced.
+ * - `key_lost`: the transaction's key is gone (already exchanged,
+ *   discarded, rejected or denied). Start again.
+ * - `bad_response`: the box answered 200 without a usable bearer token.
+ *
+ * Refusals by the box itself are `PlumApiError`s carrying the box's OAuth
+ * code (`invalid_grant`, `invalid_dpop_proof`, …), as with `exchangeCode`.
+ */
+export class PlumOAuthError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "PlumOAuthError";
+    this.code = code;
+  }
+}
+
+/**
  * Parse a `Retry-After` value (RFC 9110 §10.2.3: delta-seconds or an
  * HTTP-date) into milliseconds from `now`. Undefined when absent or
  * unparseable; a date in the past is 0.
