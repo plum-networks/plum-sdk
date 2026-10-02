@@ -3,6 +3,7 @@ import type { HttpAdapter } from "./http.js";
 import { responseJSON, responseText } from "./http.js";
 import { fetchAdapter } from "./adapters/fetch.js";
 import type { OAuthScope } from "./types.js";
+import { b64url, randomBytes, sha256 } from "./internal/crypto.js";
 
 /**
  * Delegated authorization (OAuth 2.0 Authorization Code + PKCE) for third-party
@@ -88,37 +89,6 @@ export function parseCallback(callbackUrl: string): CallbackResult {
   const u = new URL(callbackUrl);
   const g = (k: string): string | undefined => u.searchParams.get(k) ?? undefined;
   return { code: g("code"), state: g("state"), iss: g("iss"), error: g("error") };
-}
-
-const b64url = (bytes: Uint8Array): string => {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoaShim(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-};
-
-function btoaShim(s: string): string {
-  const g = globalThis as { btoa?: (s: string) => string; Buffer?: typeof Buffer };
-  if (typeof g.btoa === "function") return g.btoa(s);
-  if (g.Buffer) return g.Buffer.from(s, "binary").toString("base64");
-  throw new Error("no base64 encoder available");
-}
-
-function randomBytes(n: number): Uint8Array {
-  const g = globalThis as { crypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array } };
-  const out = new Uint8Array(n);
-  if (g.crypto?.getRandomValues) return g.crypto.getRandomValues(out);
-  throw new Error("no secure RNG available");
-}
-
-async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
-  const g = globalThis as { crypto?: Crypto };
-  let subtle = g.crypto?.subtle;
-  if (!subtle) {
-    const nodeCrypto = (await import("node:crypto")) as unknown as { webcrypto?: Crypto };
-    subtle = nodeCrypto.webcrypto?.subtle;
-  }
-  if (!subtle) throw new Error("no SubtleCrypto for PKCE");
-  return new Uint8Array(await subtle.digest("SHA-256", bytes as unknown as BufferSource));
 }
 
 /**
