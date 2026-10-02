@@ -23,9 +23,9 @@ plum-dev push --logs                 # sign → install → follow the service l
 | `login --box <url> --token <plum_pat_…>` | Use a token you created yourself instead of pairing. `login --publisher-token <plum_pub_…>` saves a store publishing token. |
 | `init <name> [--template panel\|server-go] [--id]` | Scaffolds an app that already passes `validate`. |
 | `validate [dir\|.plu] [--allow-host-arch]` | The box's rules, locally: manifest fields, permissions, limits, entry/icon presence, arm64 ELF check for `server.bin`, size caps. |
-| `package [dir] [-o out.plu] [--rotation r.json] [--no-recovery]` | Deterministic zip (sorted entries, fixed timestamps) with `META/MANIFEST.sha256`, `META/publisher.pub`, `META/publisher.sig`, optional `META/recovery.pub` and `META/rotation.json`. Prints the sha256. |
-| `sign <in.plu> [-o out.plu]` | Re-signs an existing bundle; the previous `META/` is replaced. |
-| `inspect <.plu> [--json]` | Publisher, recovery key, covered files, whether the signature verifies. |
+| `package [dir] [-o out.plu] [--rotation r.json] [--no-recovery]` | Deterministic zip (sorted entries, fixed timestamps) with `META/MANIFEST.sha256`, `META/publisher.pub`, `META/publisher.sig`, optional `META/recovery.pub` + `META/recovery.sig` (see [Recovery key](#recovery-key)) and `META/rotation.json`. Prints the sha256. |
+| `sign <in.plu> [-o out.plu]` | Re-signs an existing bundle; the previous `META/` is replaced (including any `recovery.sig`, which is re-made for your `recovery.pub`). |
+| `inspect <.plu> [--json]` | Publisher, recovery key and whether the publisher signed it, covered files, whether the signature verifies. |
 | `build [dir] [--template go\|rust\|zig\|dockerfile]` | Cross-builds the service to the path `manifest.server.bin` names, for linux/arm64. Go needs no Docker (`CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w'`); other toolchains go through `docker buildx build --platform linux/arm64` with a generated Dockerfile (or your own `Dockerfile.plum`, final stage holding the binary at `/svc`). The result must be a static arm64 ELF or it is refused, naming what it found. |
 | `push [dir\|.plu] [--logs] [--watch] [--build\|--no-build]` | `validate` + `package` in memory, then `POST /api/apps/install` on the paired box. Builds the service first when `server.bin` is not there yet (`--build` forces, `--no-build` skips). `--watch` re-pushes on change, `--logs` follows the service log afterwards. |
 | `logs <app-id> [-f]` | Retained service stdout/stderr; `-f` streams (SSE). |
@@ -50,6 +50,50 @@ per line). `node_modules`, `.git`, dotfiles and `META/` are always skipped.
 3. Updates must come from the same key as the installed version, or carry a
    rotation record signed by the old key or the recovery key.
 4. `server.bin` must be an arm64 ELF.
+5. The recovery key on record changes only when the new one is vouched for —
+   see below.
+
+## Recovery key
+
+`keygen` writes `recovery.pub` next to your publisher key, and every bundle
+you sign carries it as `META/recovery.pub`. A box writes that key down at
+install; later, a rotation record signed by it moves the app to a new
+publisher key even if the old one is lost.
+
+`MANIFEST.sha256` lists only the app's files, so the publisher signature does
+not cover anything under `META/` — on its own, `recovery.pub` is signed by
+nobody, and anyone who re-zips one of your bundles could put their own key
+there. So the CLI also writes **`META/recovery.sig`**: an Ed25519 signature by
+your *publisher* key over
+
+```
+plum-recovery-v1\n<app id>\ned25519:<base64url recovery key>
+```
+
+(purpose line, `manifest.json`'s `id`, the key in its canonical form; no
+trailing newline), stored as unpadded base64url plus `\n`. It is the same
+format plum-box-core's own signer writes (`trust.Signer.SignZip`), and the test
+suite checks it byte for byte against a vector from that code — and, when a
+core checkout is available (`PLUM_CORE_DIR`), against the box's verifier
+itself.
+
+What a box does with the recovery key in a bundle:
+
+| Situation | Recorded? |
+|---|---|
+| First install of the app on that box | yes (trust on first use, like the publisher key) |
+| Same key as on record | yes (no change) |
+| A different key (or one where none was recorded), signed by your publisher key in `recovery.sig` | yes |
+| A different key, in a bundle from the store or with a verified store countersign | yes |
+| A different key, direct install (`push`, a `.plu` file), **no** `recovery.sig` | **no** — the box keeps what it had and logs it; the install itself still succeeds |
+
+> **Upgrading from `@plumbox/dev` 0.1.0.** 0.1.0 wrote `recovery.pub` but not
+> `recovery.sig`. Bundles it built still install everywhere, but a box no
+> longer takes a *changed* recovery key from them on a direct install. Re-sign
+> or re-publish with this version to add the signature: `plum-dev package`
+> again, or `plum-dev sign old.plu` for a bundle you only have as a file.
+> `plum-dev inspect` shows `signed by the publisher (META/recovery.sig)` once
+> it is there. Boxes that predate the check ignore the extra file.
 
 Errors come back as `signature_invalid`, `publisher_untrusted`,
 `publisher_changed`, `countersign_required`, `app_id_mismatch`, `server_bin_arch`.
@@ -66,7 +110,9 @@ Errors come back as `signature_invalid`, `publisher_untrusted`,
 
 The signing format is shared with the box's Go implementation (`cmd/plu` in
 plum-box-core); the test suite cross-checks against it when that tool is on
-the machine.
+the machine (`PLUM_GO_PLU`, default `~/.local/bin/plu`), and against the trust
+package itself when a plum-box-core checkout is at `PLUM_CORE_DIR` (or
+`../plum-box-core`).
 
 ## Emulator (no box, no Docker needed)
 

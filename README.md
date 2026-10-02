@@ -50,7 +50,11 @@ and a **recovery key** next to it. Every `.plu` you build is signed with the
 publisher key; the recovery key is what lets you hand boxes a new publisher key
 if you ever lose the first one, without going through Plum. Move the recovery
 key offline and delete it from the laptop — the CLI only needs the public half
-(`~/.config/plum-dev/recovery.pub`), which it embeds in each bundle.
+(`~/.config/plum-dev/recovery.pub`), which it embeds in each bundle together
+with your publisher key's signature over it (`META/recovery.sig`). Boxes only
+take a *changed* recovery key from a bundle that carries that signature (or
+comes from the store); bundles from `@plumbox/dev` 0.1.0 lack it — re-package
+or re-publish them. Details: [Recovery key](packages/cli/README.md#recovery-key).
 
 Override the paths with `PLUM_DEV_HOME` (config dir) and `PLUM_DEV_KEY` (key
 file) — that is how CI passes a key in; see
