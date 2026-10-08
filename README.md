@@ -1,18 +1,21 @@
 # Plum SDK
 
 Everything you need to build an app that runs **on** a Plum Box, or talks **to**
-one. Five npm packages, one JSON Schema, one on-box JavaScript runtime.
+one. Four npm packages, one JSON Schema, one on-box JavaScript runtime.
 
 | Package | Runs where | Use it for |
 |---|---|---|
 | [`@plumbox/dev`](packages/cli) (`plum-dev`) | your laptop | publisher key, pair your own box, sign + install a `.plu` without the store, follow service logs, run a panel locally |
-| [`@plumbox/client`](packages/client) | outside the box (Node, desktop, Obsidian plugins) | log in once → auto-connect through Plum Relay → Drive API. No IP, port or tunnel |
+| [`@plumbox/client`](packages/client) | outside the box (Node, desktop, Obsidian plugins) | sign in once with OAuth (the password stays on the user's box) → Drive API through Plum Relay. No IP, port or tunnel |
 | [`@plumbox/ui`](packages/ui) | inside a `.plu` panel | the phone apps' design tokens + eight framework-free web components |
 | [`@plumbox/manifest`](packages/manifest) | any validator | the `manifest.json` JSON Schema, shared by the CLI, the store and the box |
-| [`@plumbox/oprf`](packages/oprf) | any client | zero-knowledge box discovery: find a user's box from (email, password) without the relay learning either |
 | `src/plum-sdk.js` | inside a `.plu` panel, served by the box | file pickers, user info, `plum.service` — the box serves it at `/apps/runtime/plum-sdk.js` |
 
 Node **18 or newer** everywhere.
+
+`packages/oprf` (`@plumbox/oprf`) is **deprecated** and no longer released: OPRF
+box discovery ends with Plum Box v3. An app finds the user's box through
+delegated OAuth in `@plumbox/client` — the callback names the box.
 
 ---
 

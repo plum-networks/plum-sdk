@@ -13,14 +13,17 @@ export interface DiscoverResult {
 }
 
 /**
- * @deprecated Use `resolveBoxes(email, password)` from `@plumbox/oprf` instead.
+ * @deprecated Connect with delegated OAuth instead (`beginAuthorization` →
+ * `parseCallback` → `exchangeCode`): the callback's `iss` names the user's
+ * box, so an app never has to look one up. This function goes away in a later
+ * minor version, when the relay switches `/api/lookup` off.
  *
  * This resolves a box from an email alone via the relay's LEGACY `/api/lookup`.
  * That endpoint is an existence oracle — anyone who guesses an email learns
- * whether that person owns a box and its address — and it is being retired. The
- * zero-knowledge path (`@plumbox/oprf`) requires the password too, so the relay
- * never learns the email, the password, or which box. Prefer it for anything
- * new; this remains only for boxes/relays that predate the routing directory.
+ * whether that person owns a box and its address — and Plum Box v3 retires it:
+ * people now find their boxes on plumbox.me with a code mailed to them. The
+ * other old route, `resolveBoxes` from `@plumbox/oprf`, is deprecated for the
+ * same reason.
  *
  * CACHE THE RESULT: the endpoint is rate-limited to ~10 requests/minute per
  * source IP, and a box's subdomain is stable for its lifetime.

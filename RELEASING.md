@@ -1,16 +1,18 @@
 # Releasing the `@plumbox/*` packages
 
-Five packages live in this repo and each has its own version. They do not
-depend on one another at runtime, so they are released independently — you do
-not have to bump all five because one changed.
+Four packages are released from this repo and each has its own version. They
+do not depend on one another at runtime, so they are released independently —
+you do not have to bump all four because one changed.
 
 | Package | Directory | npm |
 |---|---|---|
 | `@plumbox/manifest` | `packages/manifest` | the `manifest.json` JSON Schema |
-| `@plumbox/oprf` | `packages/oprf` | zero-knowledge box discovery |
 | `@plumbox/ui` | `packages/ui` | panel design system |
 | `@plumbox/client` | `packages/client` | outside-the-box client SDK |
 | `@plumbox/dev` | `packages/cli` | the `plum-dev` CLI |
+
+`packages/oprf` (`@plumbox/oprf`) is deprecated and is not released any more;
+see "What is not released from here".
 
 `scripts/publish.sh` publishes in that order. Nothing here imports anything
 else here, so the order is really "source of truth first" — if a release ever
@@ -130,3 +132,15 @@ tarball, unpublish **and** rotate the secret; assume the tarball was mirrored.
   own binary; `scripts/vendor-to-core.sh` copies it into `plum-box-core`, and it
   ships with a core release.
 - `examples/` is documentation, not a package.
+- `packages/oprf` (`@plumbox/oprf`) is **deprecated** (Plum Box v3 ends OPRF
+  box discovery; apps connect with OAuth from `@plumbox/client`). It stays in
+  the workspace — its golden tests still pin the crypto the old relay rows use
+  — until the relay switches `/api/oprf` off, and `scripts/publish.sh` refuses
+  to publish it. `publish.sh` has no deprecate step; mark it on npm by hand,
+  once, as the npm owner:
+
+  ```bash
+  npm deprecate @plumbox/oprf "OPRF 찾기는 끝납니다. OAuth(@plumbox/client)를 쓰세요."
+  ```
+
+  `npm view @plumbox/oprf deprecated` then prints that message.

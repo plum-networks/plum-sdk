@@ -19,15 +19,17 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)
 cd "$HERE"
 
 # Dependency order. Nothing here imports anything else here at runtime, so this
-# is really "source of truth first": the manifest schema, then the crypto
-# primitive, then the pieces that document themselves in terms of both.
+# is really "source of truth first": the manifest schema, then the pieces that
+# document themselves in terms of it. @plumbox/oprf is deprecated (Plum Box v3
+# ends OPRF discovery) and is not released from here any more — see
+# RELEASING.md for the one-time `npm deprecate`.
 ORDER=(
   "@plumbox/manifest"
-  "@plumbox/oprf"
   "@plumbox/ui"
   "@plumbox/client"
   "@plumbox/dev"
 )
+RETIRED=("@plumbox/oprf")
 
 DRY_RUN=0
 OTP=""
@@ -45,6 +47,22 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# Naming a package that is not released from here is a mistake, not a no-op.
+for p in "${ONLY[@]+"${ONLY[@]}"}"; do
+  for r in "${RETIRED[@]}"; do
+    if [ "$p" = "$r" ]; then
+      echo "publish.sh: $p is deprecated and no longer released (RELEASING.md, \"What is not released from here\")." >&2
+      exit 2
+    fi
+  done
+  known=0
+  for o in "${ORDER[@]}"; do [ "$p" = "$o" ] && known=1; done
+  if [ "$known" -eq 0 ]; then
+    echo "publish.sh: no package $p in this repo" >&2
+    exit 2
+  fi
+done
+
 wants() {
   [ ${#ONLY[@]} -eq 0 ] && return 0
   local p
@@ -58,7 +76,6 @@ dir_of() {
     "@plumbox/dev") echo cli ;;
     "@plumbox/client") echo client ;;
     "@plumbox/manifest") echo manifest ;;
-    "@plumbox/oprf") echo oprf ;;
     "@plumbox/ui") echo ui ;;
     *) echo "publish.sh: no directory known for $1" >&2; exit 2 ;;
   esac
