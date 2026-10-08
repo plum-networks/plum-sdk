@@ -1,5 +1,5 @@
 import { fetchAdapter } from "./adapters/fetch.js";
-import { errorFromResponse, PlumAuthError } from "./errors.js";
+import { errorFromResponse, PlumApiError, PlumAuthError } from "./errors.js";
 import type { HttpAdapter, HttpResponse } from "./http.js";
 import { joinURL, parseSessionCookie, responseJSON, responseText } from "./http.js";
 import { DriveApi } from "./drive.js";
@@ -7,7 +7,7 @@ import { AppsApi } from "./apps.js";
 import type { CreatedToken, TokenInfo, TokenScope, TokenStorage } from "./types.js";
 
 export interface PlumClientOptions {
-  /** `https://pb-<sub>.plumbox.me` — from {@link discover} or stored settings. */
+  /** `https://pb-<sub>.plumbox.me` — the `iss` of an OAuth callback, or stored settings. */
   baseUrl: string;
   /** PAT (`plum_pat_…`). When set, every request uses Bearer auth. */
   token?: string;
@@ -87,6 +87,12 @@ export class PlumClient {
    * First-factor login with the box account's email/username + password.
    * On success the client holds a session cookie (7-day TTL) — immediately
    * mint a PAT with `auth.createToken` and persist only that.
+   *
+   * @deprecated Connect with delegated OAuth instead (`beginAuthorization` →
+   * `parseCallback` → `exchangeCode`), so the password is typed only on the
+   * box's own page. A Plum Box v3 box can answer a sign-in from a new device
+   * with a mail code (`requireSecondFactor`); this method cannot complete that
+   * step and stops with `PlumApiError` code `second_factor_unsupported`.
    */
   async login(cred: { login: string; password: string }): Promise<LoginResult> {
     const res = await this.request("/api/auth/login", {
@@ -94,7 +100,14 @@ export class PlumClient {
       json: { login: cred.login, password: cred.password },
       allowStatus: [200],
     });
-    const body = responseJSON<{ requireTotp?: boolean; tempToken?: string }>(res);
+    const body = responseJSON<{ requireTotp?: boolean; requireSecondFactor?: boolean; tempToken?: string }>(res);
+    if (body.requireSecondFactor) {
+      throw new PlumApiError(
+        res.status,
+        "this box asks a new device for a mail code, which PlumClient.login cannot answer — connect with delegated OAuth (beginAuthorization)",
+        "second_factor_unsupported",
+      );
+    }
     if (body.requireTotp && body.tempToken) {
       const tempToken = body.tempToken;
       return {

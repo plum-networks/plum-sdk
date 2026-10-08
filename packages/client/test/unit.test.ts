@@ -82,6 +82,24 @@ describe("login", () => {
     const client = new PlumClient({ baseUrl: "https://pb-x.plumbox.me", http: adapter });
     await expect(client.login({ login: "a", password: "b" })).rejects.toThrow(/Set-Cookie/);
   });
+
+  // v3 contract 7.2 (다): a new device on an account with mail codes gets a
+  // second step this deprecated method cannot answer. It says so, instead of
+  // "no session cookie".
+  it("stops with second_factor_unsupported on a mail second step", async () => {
+    const { adapter, requests } = mockAdapter(() =>
+      textResponse(
+        200,
+        `{"success":true,"requireSecondFactor":true,"method":"email","tempToken":"t","email_hint":"a***@b***.c","sent":true,"resend_after":60}`,
+      ),
+    );
+    const client = new PlumClient({ baseUrl: "https://pb-x.plumbox.me", http: adapter });
+    const err = await client.login({ login: "a@b.c", password: "pw" }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PlumApiError);
+    expect((err as PlumApiError).code).toBe("second_factor_unsupported");
+    expect(client.hasSession).toBe(false);
+    expect(requests).toHaveLength(1);
+  });
 });
 
 describe("bearer auth + errors", () => {

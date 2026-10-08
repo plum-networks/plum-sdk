@@ -8,6 +8,9 @@ export {
   beginAuthorization,
   exchangeCode,
   parseCallback,
+  callbackFromParams,
+  isPlumIssuer,
+  PLUM_ISSUER_PATTERN,
   DEFAULT_PORTAL_URL,
 } from "./oauth.js";
 export type {
@@ -16,7 +19,7 @@ export type {
   ExchangeCodeOptions,
   CallbackResult,
 } from "./oauth.js";
-export { PlumApiError, PlumAuthError } from "./errors.js";
+export { PlumApiError, PlumAuthError, PlumOAuthError } from "./errors.js";
 export { fetchAdapter } from "./adapters/fetch.js";
 export { injectedAdapter } from "./adapters/inject.js";
 export type { RequestUrlLike } from "./adapters/inject.js";
