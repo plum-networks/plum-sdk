@@ -1,5 +1,5 @@
 import { webcrypto } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   beginAuthorization,
   callbackFromParams,
@@ -71,6 +71,37 @@ describe("beginAuthorization", () => {
     expect(req.codeVerifier.length).toBeGreaterThanOrEqual(43);
     expect(req.codeVerifier.length).toBeLessThanOrEqual(128);
     expect(req.state.length).toBeGreaterThan(0);
+  });
+
+  describe("with no global crypto (Node 18 ES modules)", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    // Node 18 gives a script or an ES module no global `crypto`; the polyfill
+    // at the top of this file hid that. The verifier and state must fall back
+    // to node:crypto just as the challenge does.
+    it("still builds the request from node:crypto", async () => {
+      vi.stubGlobal("crypto", undefined);
+      expect((globalThis as { crypto?: unknown }).crypto).toBeUndefined();
+
+      const a = await beginAuthorization({
+        clientId: "com.example.notes:ios", redirectUri: "x://cb", scopes: ["files:read"],
+      });
+      const b = await beginAuthorization({
+        clientId: "com.example.notes:ios", redirectUri: "x://cb", scopes: ["files:read"],
+      });
+      expect(a.codeVerifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(a.state).toMatch(/^[A-Za-z0-9_-]{22}$/);
+      expect(a.codeVerifier).not.toBe(b.codeVerifier);
+      expect(a.state).not.toBe(b.state);
+
+      const digest = new Uint8Array(
+        await webcrypto.subtle.digest("SHA-256", new TextEncoder().encode(a.codeVerifier)),
+      );
+      const expected = Buffer.from(digest).toString("base64url");
+      expect(new URL(a.url).searchParams.get("code_challenge")).toBe(expected);
+    });
   });
 
   it("produces a fresh verifier and state each call", async () => {

@@ -213,20 +213,32 @@ function btoaShim(s: string): string {
   throw new Error("no base64 encoder available");
 }
 
-function randomBytes(n: number): Uint8Array {
-  const g = globalThis as { crypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array } };
-  const out = new Uint8Array(n);
-  if (g.crypto?.getRandomValues) return g.crypto.getRandomValues(out);
-  throw new Error("no secure RNG available");
+/**
+ * `node:crypto`'s Web Crypto, for runtimes with no global `crypto`: Node 18
+ * gives scripts and ES modules none (it arrived unflagged in Node 19).
+ * Undefined where there is no `node:crypto` (a browser without Web Crypto).
+ * The random bytes and the hash both come through here, so the verifier and
+ * `state` work wherever the challenge does.
+ */
+async function nodeWebCrypto(): Promise<Crypto | undefined> {
+  try {
+    const nodeCrypto = (await import("node:crypto")) as unknown as { webcrypto?: Crypto };
+    return nodeCrypto.webcrypto;
+  } catch {
+    return undefined;
+  }
+}
+
+async function randomBytes(n: number): Promise<Uint8Array> {
+  const g = (globalThis as { crypto?: Crypto }).crypto;
+  const c = g?.getRandomValues ? g : await nodeWebCrypto();
+  if (!c?.getRandomValues) throw new Error("no secure RNG available");
+  return c.getRandomValues(new Uint8Array(n));
 }
 
 async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
-  const g = globalThis as { crypto?: Crypto };
-  let subtle = g.crypto?.subtle;
-  if (!subtle) {
-    const nodeCrypto = (await import("node:crypto")) as unknown as { webcrypto?: Crypto };
-    subtle = nodeCrypto.webcrypto?.subtle;
-  }
+  const g = (globalThis as { crypto?: Crypto }).crypto;
+  const subtle = g?.subtle ?? (await nodeWebCrypto())?.subtle;
   if (!subtle) throw new Error("no SubtleCrypto for PKCE");
   return new Uint8Array(await subtle.digest("SHA-256", bytes as unknown as BufferSource));
 }
@@ -248,9 +260,9 @@ export async function beginAuthorization(
   const portal = (opts.portalUrl ?? DEFAULT_PORTAL_URL).replace(/\/+$/, "");
   // PKCE verifier: 43–128 chars from the unreserved set. 32 random bytes
   // base64url-encoded → 43 chars.
-  const codeVerifier = b64url(randomBytes(32));
+  const codeVerifier = b64url(await randomBytes(32));
   const codeChallenge = b64url(await sha256(new TextEncoder().encode(codeVerifier)));
-  const state = b64url(randomBytes(16));
+  const state = b64url(await randomBytes(16));
 
   const params = new URLSearchParams({
     response_type: "code",
