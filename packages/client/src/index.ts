@@ -17,8 +17,11 @@ export type {
   BeginAuthorizationOptions,
   AuthorizationRequest,
   ExchangeCodeOptions,
+  CallbackOptions,
   CallbackResult,
 } from "./oauth.js";
+export { PRODUCTION, STAGING, plumEnvironment, isForeignUrl } from "./env.js";
+export type { PlumEnvironment } from "./env.js";
 export { PlumApiError, PlumAuthError, PlumOAuthError } from "./errors.js";
 export { fetchAdapter } from "./adapters/fetch.js";
 export { injectedAdapter } from "./adapters/inject.js";

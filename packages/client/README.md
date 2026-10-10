@@ -159,6 +159,16 @@ Plum Box v3 moves every sign-in onto the box's own page, reached through plumbox
 | Apps (companion) | `apps.status`, `apps.ensureServiceInstalled` (→ `plum://store/<id>` / web install link), `apps.entitlement`, `apps.refreshEntitlements` |
 | Errors | `PlumApiError` (status/code), `PlumAuthError` (401/403 → `onAuthError` hook), `PlumOAuthError` (a callback the SDK refused before sending anything) |
 
+## Environments
+
+Production (`plumbox.me`) is the default and needs no option. Plum's own staging
+environment is chosen with `boxDomain: "staging.plumbox.me"` — on `PlumClient`,
+`beginAuthorization`, `parseCallback`/`callbackFromParams` (second argument) and
+`exchangeCode`. Each environment takes only its own boxes: a production client
+refuses a `*.staging.plumbox.me` box and a staging client refuses a production
+one (LAN addresses and localhost belong to neither and are accepted).
+`PRODUCTION`, `STAGING` and `plumEnvironment()` hold the addresses.
+
 ## Sync-client notes
 
 - `list(..., { hash: true })` returns the box-indexed SHA-256 per file; files uploaded before hash indexing omit it — fall back to `size` + `modTime`.

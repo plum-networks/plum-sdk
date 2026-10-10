@@ -3,6 +3,7 @@ import type { HttpAdapter } from "./http.js";
 import { responseJSON, responseText } from "./http.js";
 import { fetchAdapter } from "./adapters/fetch.js";
 import type { OAuthScope } from "./types.js";
+import { plumEnvironment, PRODUCTION } from "./env.js";
 
 /**
  * Delegated authorization (OAuth 2.0 Authorization Code + PKCE) for third-party
@@ -25,7 +26,13 @@ import type { OAuthScope } from "./types.js";
  * pass `injectedAdapter(requestUrl)` as `http`.
  */
 
-export const DEFAULT_PORTAL_URL = "https://plumbox.me";
+export const DEFAULT_PORTAL_URL = PRODUCTION.portalOrigin;
+
+/** `iss` for a box of the environment whose box domain is `boxDomain`. */
+function issuerPattern(boxDomain: string): RegExp {
+  const domain = boxDomain.replace(/\./g, "\\.");
+  return new RegExp(`^https:\\/\\/pb-[a-z0-9](?:[a-z0-9-]{0,57}[a-z0-9])?\\.${domain}$`);
+}
 
 /**
  * The shape of every Plum box's own address, as `iss` (v3 contract 10.1). A
@@ -33,23 +40,26 @@ export const DEFAULT_PORTAL_URL = "https://plumbox.me";
  * aliases (`pb-…-lan`, `pb-…-wan`) are refused on top of this pattern by
  * {@link isPlumIssuer}. The name is not narrowed to hex: older box names exist.
  */
-export const PLUM_ISSUER_PATTERN = /^https:\/\/pb-[a-z0-9](?:[a-z0-9-]{0,57}[a-z0-9])?\.plumbox\.me$/;
+export const PLUM_ISSUER_PATTERN = issuerPattern(PRODUCTION.boxDomain);
 
 /**
  * Whether `iss` is a Plum box's canonical origin: `https://pb-<name>.plumbox.me`
  * exactly — https, no port, no path, no trailing slash, lower case, and not the
- * box's `-lan`/`-wan` alias.
+ * box's `-lan`/`-wan` alias. `boxDomain` picks the environment (default
+ * production, `plumbox.me`; `staging.plumbox.me` for Plum's staging): a box of
+ * another environment is not one.
  *
  * Limit: this says "a Plum box", not "the box the user picked". Swapping in a
  * different Plum box is stopped elsewhere (the signed directory list and the
  * portal sending the user only to the box they chose).
  */
-export function isPlumIssuer(iss: unknown): iss is string {
+export function isPlumIssuer(iss: unknown, boxDomain?: string): iss is string {
+  const domain = plumEnvironment(boxDomain).boxDomain;
   return (
     typeof iss === "string" &&
-    PLUM_ISSUER_PATTERN.test(iss) &&
-    !iss.endsWith("-lan.plumbox.me") &&
-    !iss.endsWith("-wan.plumbox.me")
+    (domain === PRODUCTION.boxDomain ? PLUM_ISSUER_PATTERN : issuerPattern(domain)).test(iss) &&
+    !iss.endsWith(`-lan.${domain}`) &&
+    !iss.endsWith(`-wan.${domain}`)
   );
 }
 
@@ -71,8 +81,10 @@ export interface BeginAuthorizationOptions {
   redirectUri: string;
   /** Must be a subset of the scopes the client was registered with. */
   scopes: OAuthScope[];
-  /** Portal that hosts the /authorize entry (where the user finds their box). */
+  /** Portal that hosts the /authorize entry (where the user finds their box). Default: the environment's portal. */
   portalUrl?: string;
+  /** The environment, by box domain: `plumbox.me` (default) or `staging.plumbox.me`. */
+  boxDomain?: string;
 }
 
 export interface AuthorizationRequest {
@@ -106,6 +118,14 @@ export interface ExchangeCodeOptions {
   clientId: string;
   redirectUri: string;
   http?: HttpAdapter;
+  /** The environment, by box domain: `plumbox.me` (default) or `staging.plumbox.me`. */
+  boxDomain?: string;
+}
+
+/** Which environment a callback is checked against. */
+export interface CallbackOptions {
+  /** By box domain: `plumbox.me` (default) or `staging.plumbox.me`. */
+  boxDomain?: string;
 }
 
 export interface CallbackResult {
@@ -142,9 +162,9 @@ export interface CallbackResult {
  * `state` is checked by `exchangeCode` (pass the one `beginAuthorization`
  * returned as `expectedState`). Throws on a malformed URL.
  */
-export function parseCallback(callbackUrl: string): CallbackResult {
+export function parseCallback(callbackUrl: string, opts?: CallbackOptions): CallbackResult {
   const u = new URL(callbackUrl);
-  return checkCallback((k) => u.searchParams.getAll(k));
+  return checkCallback((k) => u.searchParams.getAll(k), opts?.boxDomain);
 }
 
 /**
@@ -152,15 +172,16 @@ export function parseCallback(callbackUrl: string): CallbackResult {
  * rather than a URL — Obsidian's `registerObsidianProtocolHandler` hands the
  * handler `{ action, code, state, iss, … }`. Same checks, same result.
  */
-export function callbackFromParams(params: Record<string, unknown>): CallbackResult {
+export function callbackFromParams(params: Record<string, unknown>, opts?: CallbackOptions): CallbackResult {
   return checkCallback((k) => {
     const v = params[k];
     if (v === undefined || v === null) return [];
     return Array.isArray(v) ? v.map(String) : [String(v)];
-  });
+  }, opts?.boxDomain);
 }
 
-function checkCallback(all: (key: string) => string[]): CallbackResult {
+function checkCallback(all: (key: string) => string[], boxDomain: string | undefined): CallbackResult {
+  plumEnvironment(boxDomain); // an unknown environment throws before anything is read
   // A parameter that appears twice is not one this flow produced; refusing
   // it keeps "which iss did we check" and "which iss do we use" the same.
   const one = (k: string): string | undefined | null => {
@@ -175,7 +196,7 @@ function checkCallback(all: (key: string) => string[]): CallbackResult {
   const out: CallbackResult = {};
   if (typeof state === "string") out.state = state;
 
-  if (iss === null || (iss !== undefined && !isPlumIssuer(iss))) {
+  if (iss === null || (iss !== undefined && !isPlumIssuer(iss, boxDomain))) {
     out.error = "invalid_iss";
     return out;
   }
@@ -257,7 +278,7 @@ export async function beginAuthorization(
   if (!opts.scopes || opts.scopes.length === 0) {
     throw new Error("beginAuthorization: at least one scope is required");
   }
-  const portal = (opts.portalUrl ?? DEFAULT_PORTAL_URL).replace(/\/+$/, "");
+  const portal = (opts.portalUrl ?? plumEnvironment(opts.boxDomain).portalOrigin).replace(/\/+$/, "");
   // PKCE verifier: 43–128 chars from the unreserved set. 32 random bytes
   // base64url-encoded → 43 chars.
   const codeVerifier = b64url(await randomBytes(32));
@@ -292,10 +313,11 @@ export async function exchangeCode(
   opts: ExchangeCodeOptions,
 ): Promise<{ accessToken: string; scope: string }> {
   const iss = opts.baseUrl;
-  if (!isPlumIssuer(iss)) {
+  const domain = plumEnvironment(opts.boxDomain).boxDomain;
+  if (!isPlumIssuer(iss, domain)) {
     throw new PlumOAuthError(
       "invalid_iss",
-      "exchangeCode: the callback's iss is not a Plum box (https://pb-….plumbox.me); nothing was sent",
+      `exchangeCode: the callback's iss is not a Plum box (https://pb-….${domain}); nothing was sent`,
     );
   }
   if (typeof opts.expectedState !== "string" || opts.expectedState === "" || opts.state !== opts.expectedState) {

@@ -5,9 +5,10 @@ import { joinURL, parseSessionCookie, responseJSON, responseText } from "./http.
 import { DriveApi } from "./drive.js";
 import { AppsApi } from "./apps.js";
 import type { CreatedToken, TokenInfo, TokenScope, TokenStorage } from "./types.js";
+import { isForeignUrl, plumEnvironment } from "./env.js";
 
 export interface PlumClientOptions {
-  /** `https://pb-<sub>.plumbox.me` — the `iss` of an OAuth callback, or stored settings. */
+  /** `https://pb-<sub>.plumbox.me` (production) — the `iss` of an OAuth callback, or stored settings. */
   baseUrl: string;
   /** PAT (`plum_pat_…`). When set, every request uses Bearer auth. */
   token?: string;
@@ -17,6 +18,14 @@ export interface PlumClientOptions {
   tokenStorage?: TokenStorage;
   /** Called once per auth failure (revoked/expired credential) — hook your re-login UI here. */
   onAuthError?: (err: PlumAuthError) => void;
+  /**
+   * The Plum environment, by box domain: `plumbox.me` (default, production) or
+   * `staging.plumbox.me`. A `baseUrl` of another environment's box is refused;
+   * a LAN address or localhost is not any environment's and is accepted.
+   */
+  boxDomain?: string;
+  /** The environment's portal (default: its own, `https://plumbox.me` in production). */
+  portalOrigin?: string;
 }
 
 const TOKEN_STORAGE_KEY = "plumbox.token";
@@ -35,6 +44,10 @@ export type LoginResult = LoginOk | LoginNeedsTotp;
 
 export class PlumClient {
   readonly baseUrl: string;
+  /** The environment's box domain (`plumbox.me` in production). */
+  readonly boxDomain: string;
+  /** The environment's portal — pass it to `beginAuthorization` as `portalUrl`. */
+  readonly portalOrigin: string;
   readonly drive: DriveApi;
   readonly auth: AuthApi;
   readonly apps: AppsApi;
@@ -47,6 +60,15 @@ export class PlumClient {
 
   constructor(opts: PlumClientOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, "");
+    const env = plumEnvironment(opts.boxDomain);
+    if (isForeignUrl(this.baseUrl, env)) {
+      throw new Error(`PlumClient: ${this.baseUrl} is not a box of ${env.boxDomain}`);
+    }
+    this.portalOrigin = (opts.portalOrigin ?? env.portalOrigin).replace(/\/+$/, "");
+    if (isForeignUrl(this.portalOrigin, env)) {
+      throw new Error(`PlumClient: ${this.portalOrigin} is not the portal of ${env.boxDomain}`);
+    }
+    this.boxDomain = env.boxDomain;
     this.http = opts.http ?? fetchAdapter;
     this.token = opts.token;
     this.tokenStorage = opts.tokenStorage;
