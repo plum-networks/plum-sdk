@@ -27,7 +27,7 @@ import { createInterface } from 'node:readline';
 import * as api from './api.js';
 import { build as buildApp, BUILD_KINDS, type BuildKind } from './build.js';
 import { checkBundle, collectFiles, inspectPlu, resignPlu, signBundle, verifyPlu, type SignOptions } from './bundle.js';
-import { configDir, EMULATOR_BOX, keyPath, loadCredentials, requireCredentials, saveCredentials, storeCredentials } from './config.js';
+import { checkBoxEnv, configDir, EMULATOR_BOX, keyPath, loadCredentials, plumEnv, requireCredentials, saveCredentials, storeCredentials } from './config.js';
 import * as emu from './emulator.js';
 import { scaffold, type Template } from './init.js';
 import { openEscrow, sealEscrow } from './escrow.js';
@@ -151,8 +151,10 @@ async function cmdKeygen(a: Args) {
 
 async function cmdPair(a: Args) {
   const boxArg = a.pos[0];
-  if (!boxArg) throw new UsageError('pair <box-url>  e.g. plum-dev pair https://pb-1234.plumbox.me  or  plum-dev pair 192.168.0.10:8443');
+  const env = plumEnv(str(a.flags, 'env'));
+  if (!boxArg) throw new UsageError(`pair <box-url>  e.g. plum-dev pair https://pb-1234.${env.boxDomain}  or  plum-dev pair 192.168.0.10:8443`);
   const box = normalizeBox(boxArg);
+  checkBoxEnv(box, env);
   if (a.flags.insecure) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   const key = loadKey(keyPath());
   const name = str(a.flags, 'name', userInfo().username)!;
@@ -180,6 +182,7 @@ async function cmdLogin(a: Args) {
   const box = str(a.flags, 'box');
   const token = str(a.flags, 'token');
   if (!box || !token) throw new UsageError('login --box <url> --token <plum_pat_…>   (token needs the apps:install and apps:dev scopes)\n       login --publisher-token <plum_pub_…> [--store <url>]');
+  checkBoxEnv(normalizeBox(box), plumEnv(str(a.flags, 'env')));
   saveCredentials({ ...(loadCredentials() ?? {}), box: normalizeBox(box), token });
   console.log(`credentials saved for ${normalizeBox(box)}`);
 }
@@ -349,7 +352,7 @@ async function buildForPush(target: string, a: Args): Promise<void> {
 }
 
 async function pushOnce(target: string, a: Args) {
-  const c = requireCredentials(str(a.flags, 'target'));
+  const c = requireCredentials(str(a.flags, 'target'), str(a.flags, 'env'));
   await buildForPush(target, a);
   const { plu, manifest } = buildSigned(target, a.flags);
   const r = await api.install(c, plu, str(a.flags, 'app-id') ?? manifest.id);
@@ -391,7 +394,7 @@ async function cmdPush(a: Args) {
 async function cmdLogs(a: Args) {
   const id = a.pos[0];
   if (!id) throw new UsageError('logs <app-id> [-f]');
-  const c = requireCredentials(str(a.flags, 'target'));
+  const c = requireCredentials(str(a.flags, 'target'), str(a.flags, 'env'));
   if (a.flags.f || a.flags.follow) await api.followLogs(c, id, (l) => console.log(l));
   else for (const l of await api.logs(c, id)) console.log(l);
 }
@@ -399,20 +402,20 @@ async function cmdLogs(a: Args) {
 async function cmdStatus(a: Args) {
   const id = a.pos[0];
   if (!id) throw new UsageError('status <app-id>');
-  console.log(JSON.stringify(await api.status(requireCredentials(str(a.flags, 'target')), id), null, 2));
+  console.log(JSON.stringify(await api.status(requireCredentials(str(a.flags, 'target'), str(a.flags, 'env')), id), null, 2));
 }
 
 async function cmdRestart(a: Args) {
   const id = a.pos[0];
   if (!id) throw new UsageError('restart <app-id>');
-  await api.restart(requireCredentials(str(a.flags, 'target')), id);
+  await api.restart(requireCredentials(str(a.flags, 'target'), str(a.flags, 'env')), id);
   console.log(`restarted ${id}`);
 }
 
 async function cmdUninstall(a: Args) {
   const id = a.pos[0];
   if (!id) throw new UsageError('uninstall <app-id>');
-  await api.uninstall(requireCredentials(str(a.flags, 'target')), id);
+  await api.uninstall(requireCredentials(str(a.flags, 'target'), str(a.flags, 'env')), id);
   console.log(`uninstalled ${id}`);
 }
 
@@ -588,6 +591,8 @@ const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on y
   testers <app-id> [list | add <box-serial> [--note …] | rm <box-serial>]
   escrow seal [--recovery-key] [-o blob.txt] | escrow open <blob.txt> [-o key-file]
   whoami
+
+--env production|staging (default production; or PLUM_DEV_ENV): which Plum environment's boxes pair, login and the box commands accept
 
 env: PLUM_DEV_HOME (config dir, default ~/.config/plum-dev), PLUM_DEV_KEY (publisher key path), PLUM_DEV_TARGET (box|emulator),
      PLUM_DEV_EMULATOR_MODE (docker|native), PLUM_DEV_CACHE (downloaded cores, default ~/.cache/plum-dev/emulator),

@@ -59,6 +59,7 @@ Errors come back as `signature_invalid`, `publisher_untrusted`,
 - `PLUM_DEV_HOME` — config directory (default `~/.config/plum-dev`).
 - `PLUM_DEV_KEY` — publisher key path.
 - `PLUM_DEV_TARGET` — `box` (default) or `emulator`.
+- `PLUM_DEV_ENV` (or `--env`) — `production` (default) or `staging`: Plum's own staging boxes (`*.staging.plumbox.me`). `pair`, `login` and the box commands refuse a box of the other environment; LAN addresses and the emulator belong to neither.
 - `PLUM_DEV_EMULATOR_MODE` — `docker` or `native`, instead of probing for a daemon.
 - `PLUM_DEV_CACHE` — downloaded emulator cores (default `~/.cache/plum-dev/emulator`, `$XDG_CACHE_HOME` respected).
 - `PLUM_DEV_DATA` — emulator data, log and pidfile (default `~/.local/share/plum-dev/emulator`, `$XDG_DATA_HOME` respected).
