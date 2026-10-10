@@ -80,5 +80,7 @@ describe('environments', () => {
     expect(requireCredentials().box).toBe(PROD_BOX);
     expect(() => requireCredentials(undefined, 'staging')).toThrow(/production box/);
     expect(requireCredentials('emulator', 'staging').box).toBe('http://127.0.0.1:8080');
+    // --env reaches the box commands: a staging run refuses the production box before sending.
+    await expect(run('restart', 'com.example.app', '--env', 'staging')).rejects.toThrow(/production box/);
   });
 });
