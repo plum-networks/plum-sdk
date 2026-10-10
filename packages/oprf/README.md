@@ -1,5 +1,14 @@
 # @plumbox/oprf
 
+> **Deprecated.** OPRF box discovery ends with Plum Box v3. People now find
+> their boxes on plumbox.me with a code mailed to them and type the password
+> only on the box's own page. Connect your app with delegated OAuth from
+> [`@plumbox/client`](../client) (`beginAuthorization` → `parseCallback` →
+> `exchangeCode`): the callback's `iss` names the box, so there is nothing to
+> look up. `resolveBoxes` keeps working only while the relay still answers
+> `/api/oprf` and `/api/resolve`; they are switched off after the move. This
+> package gets no new releases.
+
 Zero-knowledge **box discovery** for Plum. Find the box belonging to a user from
 their `(email, password)` — while the relay learns **nothing**: not the email,
 not the password, not which box, not even whether a box exists.

@@ -20,6 +20,27 @@ export class PlumAuthError extends PlumApiError {
   }
 }
 
+/**
+ * A sign-in the SDK stopped on its own, before anything was sent: the
+ * redirect back from the box did not hold up. `code` says why:
+ *
+ * - `invalid_iss`: the callback named no box, or something that is not a Plum
+ *   box's own address (`https://pb-….plumbox.me`). The authorization code is
+ *   never sent anywhere.
+ * - `invalid_state`: the callback's `state` is not the one this sign-in began
+ *   with (a forged or stale redirect).
+ * - `invalid_request`: no code and no error, or a required value is missing.
+ */
+export class PlumOAuthError extends Error {
+  readonly code: "invalid_iss" | "invalid_state" | "invalid_request";
+
+  constructor(code: PlumOAuthError["code"], message: string) {
+    super(message);
+    this.name = "PlumOAuthError";
+    this.code = code;
+  }
+}
+
 /** Parse the box's error body ({"error","message"} JSON or plain text). */
 export function errorFromResponse(status: number, bodyText: string): PlumApiError {
   let message = bodyText.trim();

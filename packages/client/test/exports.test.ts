@@ -79,10 +79,13 @@ describe("public exports", () => {
       "AppsApi",
       "PlumApiError",
       "PlumAuthError",
+      "PlumOAuthError",
       "discover",
       "beginAuthorization",
       "exchangeCode",
       "parseCallback",
+      "callbackFromParams",
+      "isPlumIssuer",
       "injectedAdapter",
     ]) {
       expect(typeof (entry as Record<string, unknown>)[name], name).toBe("function");
@@ -90,6 +93,7 @@ describe("public exports", () => {
     expect(typeof entry.fetchAdapter.request).toBe("function");
     expect(entry.DEFAULT_RELAY_URL).toMatch(/^https:\/\//);
     expect(entry.DEFAULT_PORTAL_URL).toMatch(/^https:\/\//);
+    expect(entry.PLUM_ISSUER_PATTERN).toBeInstanceOf(RegExp);
   });
 
   it("the built bundle exports the same values as the source entry", async () => {

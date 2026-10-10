@@ -62,6 +62,13 @@ export interface ResolveOptions {
  * Returns an empty array when no box matches (wrong credentials, or none
  * registered) — the relay answers a uniform 404 for both, so there is no way
  * to distinguish them, by design (no existence oracle).
+ *
+ * @deprecated OPRF box discovery ends with Plum Box v3: people find their
+ * boxes on plumbox.me with a code mailed to them, and type the password only on
+ * the box's own page. Connect with delegated OAuth from `@plumbox/client`
+ * (`beginAuthorization` → `parseCallback` → `exchangeCode`); the callback's
+ * `iss` names the box. This works only while the relay still answers
+ * `/api/oprf` and `/api/resolve`, which are switched off after the move.
  */
 export async function resolveBoxes(
   email: string,
