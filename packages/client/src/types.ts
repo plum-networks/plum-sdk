@@ -48,6 +48,10 @@ export type TokenScope = "read" | "write" | "admin";
  * vocabulary on every surface — the developer console's client registration,
  * the box's consent screen and the token it mints:
  *
+ * - `files:app`    read and write ONE folder the box makes for the app
+ *                  (`app_folder` in the token response, e.g.
+ *                  `/Apps/Obsidian Sync`) and nothing else — not the rest
+ *                  of the drive, not the trash. The least a sync app needs.
  * - `files:read`   read the user's files
  * - `files:write`  change files (implies files:read)
  * - `user:profile` read the signed-in user's profile only
@@ -57,6 +61,7 @@ export type TokenScope = "read" | "write" | "admin";
  * files:read + files:write). `admin` is never delegated to an app.
  */
 export type OAuthScope =
+  | "files:app"
   | "files:read"
   | "files:write"
   | "user:profile"
@@ -98,6 +103,43 @@ export type EnsureServiceResult =
       /** The box's own web UI, for a device without the Plum app. */
       webUrl: string;
     };
+
+/**
+ * What the box's token endpoint hands back, from `exchangeCode` or
+ * `refreshTokens` (and to `PlumClient`'s `onTokens`). Persist all of it.
+ *
+ * A box from before access tokens expired answers with
+ * `accessToken` + `scope` only: such a token never expires and has no refresh
+ * token — keep using it as it is.
+ */
+export interface OAuthTokens {
+  /** The bearer token (`plum_pat_…`). */
+  accessToken: string;
+  /** Always `"bearer"`. */
+  tokenType: string;
+  /** The scopes granted, space-separated (may be fewer than requested). */
+  scope: string;
+  /**
+   * Trade it for a new token set with `refreshTokens` (PlumClient does it for
+   * you). It ROTATES: every refresh returns a new one and the old one stops
+   * working, so always store the newest. It lapses after 90 days unused.
+   * Absent from older boxes: the access token then never expires.
+   */
+  refreshToken?: string;
+  /**
+   * When the access token expires, in ms since the epoch on THIS device's
+   * clock (computed from the box's `expires_in` on receipt). Absent: no
+   * known expiry.
+   */
+  expiresAt?: number;
+  /**
+   * Present when `files:app` was granted: the absolute drive path the token
+   * may read and write under (e.g. `/Apps/Obsidian Sync`). The box creates
+   * the folder before it issues the token. Paths you send stay absolute
+   * drive paths inside it (`/Apps/Obsidian Sync/MyVault/note.md`).
+   */
+  appFolder?: string;
+}
 
 export interface TokenStorage {
   get(key: string): Promise<string | null>;

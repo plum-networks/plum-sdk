@@ -1,8 +1,8 @@
-import { errorFromResponse, PlumOAuthError } from "./errors.js";
-import type { HttpAdapter } from "./http.js";
-import { responseJSON, responseText } from "./http.js";
+import { errorFromResponse, PlumApiError, PlumAuthError, PlumOAuthError } from "./errors.js";
+import type { HttpAdapter, HttpResponse } from "./http.js";
+import { responseText } from "./http.js";
 import { fetchAdapter } from "./adapters/fetch.js";
-import type { OAuthScope } from "./types.js";
+import type { OAuthScope, OAuthTokens } from "./types.js";
 import { plumEnvironment, PRODUCTION } from "./env.js";
 
 /**
@@ -18,8 +18,13 @@ import { plumEnvironment, PRODUCTION } from "./env.js";
  *      there and approves; the box redirects back to your `redirectUri` with
  *      `?code=…&state=…&iss=…`.
  *   2. `parseCallback()` reads that redirect and checks `iss`;
- *      `exchangeCode()` swaps the code (+ the verifier) for the access token at
+ *      `exchangeCode()` swaps the code (+ the verifier) for the tokens at
  *      that box — and only at that box.
+ *
+ * The access token expires after an hour; the refresh token that comes with
+ * it gets a new one (`refreshTokens`, which `PlumClient` calls by itself when
+ * given `refreshToken` + `clientId`). Older boxes issue a token that never
+ * expires and no refresh token.
  *
  * Obsidian: register a protocol handler via `registerObsidianProtocolHandler`,
  * pass its URL as `redirectUri`, read the params with `callbackFromParams`, and
@@ -303,15 +308,18 @@ export async function beginAuthorization(
  * that issued it. Before anything is sent, `baseUrl` must be a Plum box's own
  * address (`invalid_iss` otherwise) and the callback's `state` must equal
  * `expectedState` (`invalid_state` otherwise) — both as `PlumOAuthError`.
- * Returns the token to store; the password was never seen by your app.
+ * Returns the tokens to store; the password was never seen by your app.
+ *
+ * A current box returns an access token that expires in an hour plus a
+ * refresh token (and `appFolder` when `files:app` was granted); hand all of
+ * them to `PlumClient` and it keeps the access token fresh. An older box
+ * returns `accessToken` + `scope` only — a token that never expires.
  *
  * Errors from the box carry its OAuth code in `PlumApiError.code`:
  * `invalid_grant` (code used, expired or PKCE mismatch), `unauthorized_client`
  * (client_id not registered), `invalid_scope`, `invalid_redirect_uri`.
  */
-export async function exchangeCode(
-  opts: ExchangeCodeOptions,
-): Promise<{ accessToken: string; scope: string }> {
+export async function exchangeCode(opts: ExchangeCodeOptions): Promise<OAuthTokens> {
   const iss = opts.baseUrl;
   const domain = plumEnvironment(opts.boxDomain).boxDomain;
   if (!isPlumIssuer(iss, domain)) {
@@ -345,6 +353,103 @@ export async function exchangeCode(
   if (res.status !== 200) {
     throw errorFromResponse(res.status, responseText(res));
   }
-  const body = responseJSON<{ access_token: string; scope: string }>(res);
-  return { accessToken: body.access_token, scope: body.scope };
+  return tokensFromResponse(res, Date.now());
+}
+
+export interface RefreshTokensOptions {
+  /**
+   * The box the tokens came from: the `iss` the sign-in was checked against
+   * (the `baseUrl` given to `exchangeCode`). The same check applies — a value
+   * that is not a Plum box's canonical origin stops with
+   * `PlumOAuthError("invalid_iss")` before the refresh token is sent anywhere.
+   */
+  iss: string;
+  /** The client id the tokens were issued to (the one `beginAuthorization` used). */
+  clientId: string;
+  /** The newest refresh token you hold. */
+  refreshToken: string;
+  http?: HttpAdapter;
+  /** The environment, by box domain: `plumbox.me` (default) or `staging.plumbox.me`. */
+  boxDomain?: string;
+}
+
+/**
+ * Trade a refresh token for a new token set at `<iss>/api/oauth/token`
+ * (`grant_type=refresh_token`). `PlumClient` calls this for you when it holds a
+ * refresh token; call it yourself only if you manage tokens by hand.
+ *
+ * Refresh tokens ROTATE: the result carries a new `refreshToken` and the one
+ * you sent stops working (the box forgives a repeat within 60 s, for a reply
+ * that got lost). Store the new one before anything else; reusing an old one
+ * after that ends the whole connection. A box that answers without a new
+ * refresh token leaves the one you sent valid, and the result carries it.
+ *
+ * Throws `PlumAuthError` with status 400 and `code` `"invalid_grant"` when the
+ * box refuses the refresh token (rotated away, revoked, 90 days unused, or the
+ * user disconnected the app): the connection is gone and the user has to
+ * connect again. Any other failure (network, 5xx) is a `PlumApiError` or the
+ * transport's own error — the refresh token is still good; try again later.
+ */
+export async function refreshTokens(opts: RefreshTokensOptions): Promise<OAuthTokens> {
+  const iss = opts.iss;
+  const domain = plumEnvironment(opts.boxDomain).boxDomain;
+  if (!isPlumIssuer(iss, domain)) {
+    throw new PlumOAuthError(
+      "invalid_iss",
+      `refreshTokens: iss is not a Plum box (https://pb-….${domain}); nothing was sent`,
+    );
+  }
+  if (!opts.refreshToken || !opts.clientId) {
+    throw new PlumOAuthError("invalid_request", "refreshTokens: refreshToken and clientId are required");
+  }
+  const http = opts.http ?? fetchAdapter;
+  const res = await http.request({
+    url: iss + "/api/oauth/token",
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "refresh_token",
+      refresh_token: opts.refreshToken,
+      client_id: opts.clientId,
+    }),
+  });
+  if (res.status !== 200) {
+    const err = errorFromResponse(res.status, responseText(res));
+    if (err.code === "invalid_grant") throw new PlumAuthError(err.status, err.message, "invalid_grant");
+    throw err;
+  }
+  const tokens = tokensFromResponse(res, Date.now());
+  if (!tokens.refreshToken) tokens.refreshToken = opts.refreshToken;
+  return tokens;
+}
+
+/** Read a 200 from the token endpoint (RFC 6749 5.1, plus Plum's `app_folder`). */
+function tokensFromResponse(res: HttpResponse, now: number): OAuthTokens {
+  let body: {
+    access_token?: unknown;
+    token_type?: unknown;
+    scope?: unknown;
+    expires_in?: unknown;
+    refresh_token?: unknown;
+    app_folder?: unknown;
+  };
+  try {
+    body = JSON.parse(responseText(res)) as typeof body;
+  } catch {
+    body = {};
+  }
+  if (typeof body.access_token !== "string" || body.access_token === "") {
+    throw new PlumApiError(res.status, "the token response carried no access_token", "invalid_token_response");
+  }
+  const out: OAuthTokens = {
+    accessToken: body.access_token,
+    tokenType: typeof body.token_type === "string" && body.token_type ? body.token_type : "bearer",
+    scope: typeof body.scope === "string" ? body.scope : "",
+  };
+  if (typeof body.refresh_token === "string" && body.refresh_token) out.refreshToken = body.refresh_token;
+  if (typeof body.expires_in === "number" && Number.isFinite(body.expires_in) && body.expires_in > 0) {
+    out.expiresAt = now + body.expires_in * 1000;
+  }
+  if (typeof body.app_folder === "string" && body.app_folder.startsWith("/")) out.appFolder = body.app_folder;
+  return out;
 }

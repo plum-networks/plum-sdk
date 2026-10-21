@@ -6,9 +6,10 @@ import {
   exchangeCode,
   isPlumIssuer,
   parseCallback,
+  refreshTokens,
   type CallbackResult,
 } from "../src/oauth.js";
-import { PlumOAuthError } from "../src/errors.js";
+import { PlumApiError, PlumAuthError, PlumOAuthError } from "../src/errors.js";
 import type { HttpAdapter } from "../src/http.js";
 
 // Node 18 has no global crypto; provide it for the PKCE helper under test.
@@ -256,17 +257,28 @@ describe("exchangeCode", () => {
     const http: HttpAdapter = {
       async request(req) {
         sent.push({ url: req.url, body: req.body });
-        return textResponse(200, `{"access_token":"plum_pat_abc","token_type":"bearer","scope":"files:read files:write"}`);
+        return textResponse(
+          200,
+          `{"access_token":"plum_pat_abc","token_type":"bearer","expires_in":3600,"refresh_token":"plum_rt_1","scope":"files:app user:profile","app_folder":"/Apps/Obsidian Sync"}`,
+        );
       },
     };
     return { sent, http };
   }
 
-  it("POSTs the authorization_code grant to the iss and returns the token", async () => {
+  it("POSTs the authorization_code grant to the iss and returns the tokens", async () => {
     const { sent, http } = spy();
+    const before = Date.now();
     const out = await exchangeCode({ ...good, http });
-    expect(out.accessToken).toBe("plum_pat_abc");
-    expect(out.scope).toBe("files:read files:write");
+    expect(out).toMatchObject({
+      accessToken: "plum_pat_abc",
+      tokenType: "bearer",
+      scope: "files:app user:profile",
+      refreshToken: "plum_rt_1",
+      appFolder: "/Apps/Obsidian Sync",
+    });
+    expect(out.expiresAt).toBeGreaterThanOrEqual(before + 3600_000);
+    expect(out.expiresAt).toBeLessThanOrEqual(Date.now() + 3600_000);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.url).toBe("https://pb-x.plumbox.me/api/oauth/token");
     expect(JSON.parse(sent[0]!.body as string)).toEqual({
@@ -314,6 +326,28 @@ describe("exchangeCode", () => {
     expect(sent.map((s) => s.url)).toEqual(["https://pb-x.plumbox.me/api/oauth/token"]);
   });
 
+  it("takes an older box's answer: a token that never expires, no refresh token", async () => {
+    const http: HttpAdapter = {
+      async request() {
+        return textResponse(200, `{"access_token":"plum_pat_old","token_type":"bearer","scope":"files:read files:write"}`);
+      },
+    };
+    expect(await exchangeCode({ ...good, http })).toEqual({
+      accessToken: "plum_pat_old",
+      tokenType: "bearer",
+      scope: "files:read files:write",
+    });
+  });
+
+  it("refuses a 200 that carries no access token", async () => {
+    const http: HttpAdapter = {
+      async request() {
+        return textResponse(200, `{"token_type":"bearer"}`);
+      },
+    };
+    await expect(exchangeCode({ ...good, http })).rejects.toMatchObject({ code: "invalid_token_response" });
+  });
+
   it("throws on a non-200 token response", async () => {
     const http: HttpAdapter = {
       async request() {
@@ -321,5 +355,76 @@ describe("exchangeCode", () => {
       },
     };
     await expect(exchangeCode({ ...good, code: "bad", http })).rejects.toMatchObject({ code: "invalid_grant" });
+  });
+});
+
+describe("refreshTokens", () => {
+  const good = { iss: "https://pb-x.plumbox.me", clientId: "im.plum.obsidian-sync:obsidian", refreshToken: "plum_rt_1" };
+  function box(status: number, body: string) {
+    const sent: { url: string; body?: unknown; headers?: Record<string, string> }[] = [];
+    const http: HttpAdapter = {
+      async request(req) {
+        sent.push({ url: req.url, body: req.body, headers: req.headers });
+        return textResponse(status, body);
+      },
+    };
+    return { sent, http };
+  }
+  const ROTATED = `{"access_token":"plum_pat_2","token_type":"bearer","expires_in":3600,"refresh_token":"plum_rt_2","scope":"files:app","app_folder":"/Apps/Obsidian Sync"}`;
+
+  it("POSTs the refresh_token grant to <iss>/api/oauth/token and returns the rotated set", async () => {
+    const { sent, http } = box(200, ROTATED);
+    const out = await refreshTokens({ ...good, http });
+    expect(out).toMatchObject({ accessToken: "plum_pat_2", refreshToken: "plum_rt_2", scope: "files:app", appFolder: "/Apps/Obsidian Sync" });
+    expect(out.expiresAt).toBeGreaterThan(Date.now() + 3500_000);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.url).toBe("https://pb-x.plumbox.me/api/oauth/token");
+    expect(sent[0]!.headers?.["content-type"]).toBe("application/json");
+    expect(JSON.parse(sent[0]!.body as string)).toEqual({
+      grant_type: "refresh_token",
+      refresh_token: "plum_rt_1",
+      client_id: "im.plum.obsidian-sync:obsidian",
+    });
+  });
+
+  it.each(BAD_ISS)("sends nothing to %s (invalid_iss)", async (_name, iss) => {
+    const { sent, http } = box(200, ROTATED);
+    const err = await refreshTokens({ ...good, iss: iss as string, http }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PlumOAuthError);
+    expect((err as PlumOAuthError).code).toBe("invalid_iss");
+    expect(sent).toEqual([]);
+  });
+
+  it("sends nothing without a refresh token or a client id", async () => {
+    for (const change of [{ refreshToken: "" }, { clientId: "" }]) {
+      const { sent, http } = box(200, ROTATED);
+      await expect(refreshTokens({ ...good, ...change, http })).rejects.toMatchObject({ code: "invalid_request" });
+      expect(sent).toEqual([]);
+    }
+  });
+
+  it("invalid_grant is a PlumAuthError: the connection is gone", async () => {
+    const { http } = box(400, `{"error":"invalid_grant"}`);
+    const err = await refreshTokens({ ...good, http }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PlumAuthError);
+    expect(err).toMatchObject({ status: 400, code: "invalid_grant" });
+  });
+
+  it("any other failure is not: the refresh token is still good", async () => {
+    for (const [status, body] of [
+      [500, "boom"],
+      [400, `{"error":"invalid_request"}`],
+      [503, `{"error":"unavailable"}`],
+    ] as const) {
+      const { http } = box(status, body);
+      const err = await refreshTokens({ ...good, http }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(PlumApiError);
+      expect(err).not.toBeInstanceOf(PlumAuthError);
+    }
+  });
+
+  it("keeps the refresh token it sent when the box returns none", async () => {
+    const { http } = box(200, `{"access_token":"plum_pat_2","token_type":"bearer","expires_in":3600,"scope":"files:app"}`);
+    expect((await refreshTokens({ ...good, http })).refreshToken).toBe("plum_rt_1");
   });
 });

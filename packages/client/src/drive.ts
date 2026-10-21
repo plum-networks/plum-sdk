@@ -162,18 +162,27 @@ export class DriveApi {
     });
   }
 
-  /** mkdir -p: create every missing segment of `path`. */
+  /**
+   * mkdir -p: create every missing segment of `path`.
+   *
+   * A parent the token may not touch is passed over: a `files:app` token gets
+   * 403 on `/Apps` itself, yet may create folders inside its app folder (which
+   * the box made when it issued the token). A 403 on the last segment, or on a
+   * parent that really is missing, still surfaces.
+   */
   async ensureDir(path: string): Promise<void> {
     const segments = path.split("/").filter(Boolean);
     let current = "";
-    for (const seg of segments) {
-      current += "/" + seg;
+    for (let i = 0; i < segments.length; i++) {
+      current += "/" + segments[i];
       try {
         await this.mkdir(current);
       } catch (err) {
         // Already-exists is fine; surface anything else.
         const status = (err as { status?: number }).status;
-        if (status !== 409 && status !== 500) throw err;
+        if (status === 409 || status === 500) continue;
+        if (status === 403 && i < segments.length - 1) continue;
+        throw err;
       }
     }
   }
@@ -200,6 +209,7 @@ export class DriveApi {
     await this.client.request(`/api/drive/delete?${params}`, { method: "DELETE" });
   }
 
+  /** The box trash. Not open to a `files:app` token (403). */
   readonly trash = {
     list: async (): Promise<TrashEntry[]> => {
       const res = await this.client.request("/api/drive/trash/list");

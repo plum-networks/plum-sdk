@@ -17,6 +17,7 @@ import {
   plumEnvironment,
   PLUM_ISSUER_PATTERN,
   PRODUCTION,
+  refreshTokens,
   STAGING,
 } from "../src/index.js";
 import type { HttpAdapter, HttpRequest } from "../src/http.js";
@@ -134,6 +135,7 @@ describe("each environment takes only its own addresses", () => {
     const { http, seen } = recorder('{"access_token":"plum_pat_x","scope":"files:read"}');
     await expect(exchangeCode({ ...base, baseUrl: STAG_BOX, boxDomain: "staging.plumbox.me", http })).resolves.toEqual({
       accessToken: "plum_pat_x",
+      tokenType: "bearer",
       scope: "files:read",
     });
     expect(seen.map((r) => r.url)).toEqual([STAG_BOX + "/api/oauth/token"]);
@@ -141,6 +143,33 @@ describe("each environment takes only its own addresses", () => {
       "(https://pb-….staging.plumbox.me)",
     );
     await expect(exchangeCode({ ...base, baseUrl: STAG_BOX, http })).rejects.toThrow("(https://pb-….plumbox.me)");
+  });
+
+  it("a refresh sends nothing to another environment's box", async () => {
+    const base = { clientId: "a:b", refreshToken: "plum_rt_1" };
+    for (const [iss, boxDomain] of [
+      [STAG_BOX, undefined],
+      [PROD_BOX, "staging.plumbox.me"],
+    ] as const) {
+      const { http, seen } = recorder("{}");
+      await expect(refreshTokens({ ...base, iss, boxDomain, http })).rejects.toBeInstanceOf(PlumOAuthError);
+      expect(seen).toEqual([]);
+    }
+    const { http, seen } = recorder('{"access_token":"plum_pat_y","refresh_token":"plum_rt_2","expires_in":3600}');
+    await expect(refreshTokens({ ...base, iss: STAG_BOX, boxDomain: "staging.plumbox.me", http })).resolves.toMatchObject({
+      accessToken: "plum_pat_y",
+      refreshToken: "plum_rt_2",
+    });
+    expect(seen.map((r) => r.url)).toEqual([STAG_BOX + "/api/oauth/token"]);
+  });
+
+  it("a PlumClient refreshes only at its own environment's box", () => {
+    const tok = { token: "plum_pat_x", refreshToken: "plum_rt_1", clientId: "a:b" };
+    expect(() => new PlumClient({ baseUrl: STAG_BOX, boxDomain: "staging.plumbox.me", ...tok })).not.toThrow();
+    expect(() => new PlumClient({ baseUrl: "http://192.168.0.10:8443", iss: STAG_BOX, ...tok })).toThrow(/verified iss/);
+    expect(
+      () => new PlumClient({ baseUrl: "http://192.168.0.10:8443", iss: STAG_BOX, boxDomain: "staging.plumbox.me", ...tok }),
+    ).not.toThrow();
   });
 
   it("the authorization starts at the environment's portal", async () => {

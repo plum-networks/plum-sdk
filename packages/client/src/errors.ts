@@ -12,11 +12,32 @@ export class PlumApiError extends Error {
   }
 }
 
-/** 401/403: missing, expired, or revoked credential. Triggers `onAuthError`. */
+/**
+ * The credential itself is no good: a 401 (missing, expired or revoked token),
+ * or a refresh the box refused with `invalid_grant` (status 400, `code`
+ * `"invalid_grant"`: the connection is gone and the user has to connect
+ * again). Triggers `onAuthError`.
+ *
+ * Since 0.4.0 a 403 is NOT one of these — see {@link PlumForbiddenError}.
+ */
 export class PlumAuthError extends PlumApiError {
   constructor(status: number, message: string, code?: string) {
     super(status, message, code);
     this.name = "PlumAuthError";
+  }
+}
+
+/**
+ * 403: the credential is fine, but it may not do this — a scope it was not
+ * granted, or (a `files:app` token) a path outside its app folder. Signing in
+ * again would not change the answer, so it does NOT trigger `onAuthError`.
+ *
+ * Before 0.4.0 a 403 came as `PlumAuthError`; it is a `PlumApiError` now.
+ */
+export class PlumForbiddenError extends PlumApiError {
+  constructor(status: number, message: string, code?: string) {
+    super(status, message, code);
+    this.name = "PlumForbiddenError";
   }
 }
 
@@ -55,6 +76,7 @@ export function errorFromResponse(status: number, bodyText: string): PlumApiErro
     // plain-text error body
   }
   if (message.length > 500) message = message.slice(0, 500);
-  if (status === 401 || status === 403) return new PlumAuthError(status, message, code);
+  if (status === 401) return new PlumAuthError(status, message, code);
+  if (status === 403) return new PlumForbiddenError(status, message, code);
   return new PlumApiError(status, message, code);
 }

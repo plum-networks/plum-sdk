@@ -162,7 +162,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Subset of files:read, files:write, user:profile, service:call:<manifest.id>. read/write are aliases."
+            "description": "Subset of files:app, files:read, files:write, user:profile, service:call:<manifest.id>. files:app reaches only the app's own folder (/Apps/<name>), which the box creates. read/write are aliases."
           }
         }
       }

@@ -48,8 +48,12 @@ export const CLIENT_PLATFORMS = ['ios', 'android', 'macos', 'windows', 'linux', 
 export const CLIENT_LABEL_RE = /^[a-z0-9-]{1,32}$/;
 export const MAX_CLIENTS = 10;
 export const MAX_CLIENT_REDIRECTS = 8;
-/** Scopes a client may be registered for; read/write are aliases of files:read / files:read+files:write. */
-export const OAUTH_SCOPES = ['files:read', 'files:write', 'user:profile', 'read', 'write'] as const;
+/**
+ * Scopes a client may be registered for; read/write are aliases of files:read / files:read+files:write.
+ * files:app is the app's own folder only (the box makes /Apps/<name> and the token reaches nothing else).
+ * Not a `permissions` entry: an in-box app has no app folder of its own.
+ */
+export const OAUTH_SCOPES = ['files:app', 'files:read', 'files:write', 'user:profile', 'read', 'write'] as const;
 
 /** RFC 8252 native redirect target: custom scheme with a host/opaque part, or http loopback (any port). */
 export function isNativeRedirect(uri: string): boolean {
@@ -167,7 +171,7 @@ export function validateManifest(raw: Buffer, exists?: (rel: string) => boolean)
           if ((OAUTH_SCOPES as readonly string[]).includes(s)) continue;
           if (s === `service:call:${m.id}`) continue;
           if (s.startsWith('service:call:')) err(`${at}.scopes_allowed: "${s}" names another app's service (only service:call:${m.id})`);
-          else err(`${at}.scopes_allowed: unknown scope "${s}" (files:read, files:write, user:profile, service:call:${m.id})`);
+          else err(`${at}.scopes_allowed: unknown scope "${s}" (files:app, files:read, files:write, user:profile, service:call:${m.id})`);
         }
       });
     }
