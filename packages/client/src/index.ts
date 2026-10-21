@@ -7,6 +7,7 @@ export type { DiscoverResult } from "./discover.js";
 export {
   beginAuthorization,
   exchangeCode,
+  refreshTokens,
   parseCallback,
   callbackFromParams,
   isPlumIssuer,
@@ -17,12 +18,13 @@ export type {
   BeginAuthorizationOptions,
   AuthorizationRequest,
   ExchangeCodeOptions,
+  RefreshTokensOptions,
   CallbackOptions,
   CallbackResult,
 } from "./oauth.js";
 export { PRODUCTION, STAGING, plumEnvironment, isForeignUrl } from "./env.js";
 export type { PlumEnvironment } from "./env.js";
-export { PlumApiError, PlumAuthError, PlumOAuthError } from "./errors.js";
+export { PlumApiError, PlumAuthError, PlumForbiddenError, PlumOAuthError } from "./errors.js";
 export { fetchAdapter } from "./adapters/fetch.js";
 export { injectedAdapter } from "./adapters/inject.js";
 export type { RequestUrlLike } from "./adapters/inject.js";
@@ -33,6 +35,7 @@ export type {
   CreatedToken,
   TokenScope,
   OAuthScope,
+  OAuthTokens,
   AppServiceStatus,
   SkuEntitlement,
   AppEntitlement,

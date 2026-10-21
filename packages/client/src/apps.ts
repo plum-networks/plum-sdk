@@ -53,8 +53,9 @@ export class AppsApi {
    * GET /api/apps/{appId}/entitlement — the store receipts this box holds for
    * the app, as the box verified them. Works before the service is
    * installed. Needs a session or a token with `service:call:<appId>` (or a
-   * read scope). What a SKU unlocks is up to your app; the box only proves
-   * the receipt.
+   * read scope); a token with only `files:app` gets 403
+   * (`PlumForbiddenError`). What a SKU unlocks is up to your app; the box
+   * only proves the receipt.
    */
   async entitlement(appId: string): Promise<AppEntitlement> {
     const res = await this.client.request(`/api/apps/${encodeURIComponent(appId)}/entitlement`);

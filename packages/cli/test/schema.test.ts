@@ -54,6 +54,14 @@ describe('manifest clients[]', () => {
     expect(errorsOf([good])).toEqual([]);
   });
 
+  it('accepts files:app, the app-folder-only scope', () => {
+    expect(errorsOf([{ ...good, scopes_allowed: ['files:app', 'user:profile'] }])).toEqual([]);
+    expect(errorsOf([{ ...good, scopes_allowed: ['files:everything'] }])[0]).toMatch(/unknown scope .*files:app/);
+    // ...for outside clients only: an in-box app has no app folder.
+    const inBox = validateManifest(Buffer.from(JSON.stringify({ ...base, permissions: ['files:app'] }))).problems;
+    expect(inBox.some((p) => p.level === 'error' && /unknown permission "files:app"/.test(p.message))).toBe(true);
+  });
+
   it('rejects what the box and the store reject', () => {
     expect(errorsOf([{ ...good, client_id: 'dev.b.x:ios' }])[0]).toMatch(/client_id/);
     expect(errorsOf([{ ...good, client_id: 'dev.a.notes:IOS App' }])[0]).toMatch(/client_id/);

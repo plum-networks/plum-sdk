@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { PlumClient } from "../src/client.js";
-import { PlumApiError, PlumAuthError } from "../src/errors.js";
+import { PlumApiError, PlumAuthError, PlumForbiddenError } from "../src/errors.js";
 import type { HttpAdapter, HttpRequest, HttpResponse } from "../src/http.js";
 import { buildMultipart, parseSessionCookie } from "../src/http.js";
 
@@ -124,6 +124,29 @@ describe("bearer auth + errors", () => {
       onAuthError,
     });
     await expect(client.auth.me()).rejects.toBeInstanceOf(PlumAuthError);
+    expect(onAuthError).toHaveBeenCalledOnce();
+  });
+
+  // 0.4.0: a 403 says "not allowed", not "signed out" — a files:app token
+  // outside its folder must not make the app throw the connection away.
+  it("maps 403 to PlumForbiddenError and does NOT fire onAuthError", async () => {
+    const { adapter } = mockAdapter(() => textResponse(403, `{"error":"forbidden","message":"outside the app folder"}`));
+    const onAuthError = vi.fn();
+    const client = new PlumClient({ baseUrl: "https://pb-x.plumbox.me", token: "plum_pat_ok", http: adapter, onAuthError });
+    const err = await client.drive.list("/Photos").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PlumForbiddenError);
+    expect(err).toBeInstanceOf(PlumApiError);
+    expect(err).not.toBeInstanceOf(PlumAuthError);
+    expect((err as PlumApiError).status).toBe(403);
+    expect(onAuthError).not.toHaveBeenCalled();
+  });
+
+  it("fires onAuthError once per dead credential, however many requests fail", async () => {
+    const { adapter } = mockAdapter(() => textResponse(401, "Unauthorized"));
+    const onAuthError = vi.fn();
+    const client = new PlumClient({ baseUrl: "https://pb-x.plumbox.me", token: "plum_pat_dead", http: adapter, onAuthError });
+    const results = await Promise.allSettled([client.auth.me(), client.drive.list("/"), client.drive.list("/a")]);
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
     expect(onAuthError).toHaveBeenCalledOnce();
   });
 
