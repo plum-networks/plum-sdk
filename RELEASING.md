@@ -53,34 +53,60 @@ dependents.
 
 ## Cutting a release
 
+Releases go out from GitHub Actions with **npm trusted publishing**: no npm
+token exists anywhere — not on a laptop, not in a vault, not in a repository
+secret. `.github/workflows/publish.yml` proves to npm with a short-lived GitHub
+OIDC token that it is this repository's workflow, and npm attaches provenance
+(the package page links to the exact commit and run).
+
 1. **Bump the version** in the package's `package.json`. Semver as usual;
    these are all pre-1.0, so a breaking change bumps the minor.
 2. **Write down what changed** in that package's `README.md` if the surface
    moved. There is no CHANGELOG yet; the git log is it.
-3. **Commit.** A published tarball must correspond to a commit — `publish.sh`
-   refuses to run with tracked changes in the tree. Untracked files only warn;
-   they cannot reach a tarball unless they sit inside a path the package's
-   `files` whitelist names.
-4. **Rehearse:**
+3. **Commit and merge to `main`.**
+4. **Tag and push** — the tag is the release:
    ```bash
-   bash scripts/publish.sh --dry-run
+   git tag client@0.4.0        # <name without @plumbox/>@<version>
+   git push origin client@0.4.0
    ```
-   This runs `npm ci`, `npm run build --workspaces`, `npm run typecheck
-   --workspaces --if-present`, `npm test --workspaces` and `npm pack --dry-run`
-   for every package, and prints what it *would* publish.
-   Read the pack file lists: anything that is not `dist/`, `src/` (for
-   `@plumbox/ui` and `@plumbox/manifest`), `README.md`, `LICENSE` and
-   `package.json` is a mistake in the `files` whitelist.
-5. **Publish:**
-   ```bash
-   bash scripts/publish.sh                 # everything that is not on npm yet
-   bash scripts/publish.sh @plumbox/dev    # or just one
-   ```
-6. **Tag and push:**
-   ```bash
-   git tag dev-0.1.0        # <package-dir-name>-<version>; the script prints these
-   git push --tags
-   ```
+   The workflow finds the package, refuses when the tag and `package.json`
+   disagree or when npm already has that version, then builds, type-checks,
+   tests and publishes it. Watch it with `gh run watch -R plum-networks/plum-sdk`.
+
+### Trusted publisher (once per package)
+
+npmjs.com → the package → **Settings → Trusted publishing → GitHub Actions**:
+organization `plum-networks`, repository `plum-sdk`, workflow filename
+`publish.yml`, environment empty. Done for: `@plumbox/client` (2026-10-22).
+Do it for `@plumbox/dev`, `@plumbox/manifest` and `@plumbox/ui` before their
+next release, or that tag's run fails at the publish step (re-run it after
+adding the publisher: `gh run rerun <id>`).
+
+Trusted publishing runs only on GitHub-hosted runners (npm does not accept
+self-hosted ones yet). This repository is public, so those cost nothing — it
+does not use the company's N100 runner.
+
+Once a package has published this way, npm recommends **Settings →
+Publishing access → "Require two-factor authentication and disallow
+tokens"**: after that, `scripts/publish.sh` with a token can no longer publish
+it.
+
+### The manual way (fallback)
+
+`scripts/publish.sh` still works from a machine with an npm token that may
+publish (see Prerequisites) and is still the way to rehearse:
+
+```bash
+bash scripts/publish.sh --dry-run
+```
+
+This runs `npm ci`, `npm run build --workspaces`, `npm run typecheck
+--workspaces --if-present`, `npm test --workspaces` and `npm pack --dry-run`
+for every package, and prints what it *would* publish. Read the pack file
+lists: anything that is not `dist/`, `src/` (for `@plumbox/ui` and
+`@plumbox/manifest`), `README.md`, `LICENSE` and `package.json` is a mistake in
+the `files` whitelist. `bash scripts/publish.sh @plumbox/dev` publishes one
+package; tag it afterwards the same way as above.
 
 `typecheck` is `tsc --noEmit` and is separate from `build` on purpose: tsup
 transpiles without type-checking, and vitest does the same, so a package can

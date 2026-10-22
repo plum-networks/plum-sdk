@@ -1,0 +1,81 @@
+# Publish one @plumbox package to npm when its release tag is pushed:
+# client@0.4.0, dev@0.1.1, manifest@0.1.1, ui@0.2.1 — the package's name
+# without "@plumbox/", an "@", and the version (RELEASING.md).
+#
+# No npm token anywhere. npm trusted publishing (OIDC): npmjs.com trusts this
+# repository's publish.yml for each package (package → Settings → Trusted
+# publisher), the job proves it is that workflow with a short-lived GitHub OIDC
+# token, and npm attaches provenance on its own. Trusted publishing works only
+# on GitHub-hosted runners — not on the company's N100 runner — and this
+# repository is public, so they cost nothing.
+name: publish
+
+on:
+  push:
+    tags: ['client@*', 'dev@*', 'manifest@*', 'ui@*']
+
+permissions:
+  contents: read
+  id-token: write # the OIDC token npm checks
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      # No registry-url: setup-node would write an .npmrc that asks for a token.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: npm 11.5.1 or newer (trusted publishing)
+        run: npm install -g npm@11 && npm --version
+
+      - name: Which package, and does the tag match its version
+        id: pkg
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          short="${TAG%@*}"
+          version="${TAG#*@}"
+          dir=""
+          for d in packages/*/; do
+            if [ "$(node -p "require('./${d}package.json').name")" = "@plumbox/$short" ]; then dir="${d%/}"; fi
+          done
+          [ -n "$dir" ] || { echo "::error::no package @plumbox/$short in packages/"; exit 1; }
+          have="$(node -p "require('./$dir/package.json').version")"
+          [ "$have" = "$version" ] || { echo "::error::the tag says $version, $dir/package.json says $have"; exit 1; }
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "name=@plumbox/$short" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      - name: Build, typecheck, test
+        env:
+          DIR: ${{ steps.pkg.outputs.dir }}
+        run: |
+          npm run build -w "$DIR"
+          npm run typecheck -w "$DIR" --if-present
+          npm test -w "$DIR"
+
+      - name: Not on npm yet
+        env:
+          NAME: ${{ steps.pkg.outputs.name }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::$NAME@$VERSION is already on npm (a version is never published twice)"
+            exit 1
+          fi
+
+      - name: Publish
+        env:
+          DIR: ${{ steps.pkg.outputs.dir }}
+        run: npm publish -w "$DIR" --access public
