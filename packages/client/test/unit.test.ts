@@ -236,6 +236,26 @@ describe("drive", () => {
     // init + 3 chunks of 4MiB/4MiB/1MiB
     expect(requests).toHaveLength(4);
     expect(requests[1]?.headers?.["content-range"]).toBe(`bytes 0-4194303/${big.byteLength}`);
+    expect(JSON.parse(requests[0]!.body as string).overwrite).toBeUndefined();
+  });
+
+  it("a large overwrite upload goes chunked and says overwrite at init", async () => {
+    const { adapter, requests } = mockAdapter((req) => {
+      if (req.url.endsWith("/api/uploads/init")) {
+        return textResponse(200, `{"uploadId":"u1","chunkSize":4194304}`);
+      }
+      const range = req.headers?.["content-range"] ?? "";
+      if (range.startsWith(`bytes 8388608-`)) {
+        return textResponse(200, `{"path":"/big.bin","name":"big.bin"}`);
+      }
+      return textResponse(200, `{"receivedBytes":0,"totalBytes":0,"status":"active"}`);
+    });
+    const client = new PlumClient({ baseUrl: "https://x", token: "t", http: adapter });
+    const entry = await client.drive.upload("/big.bin", new Uint8Array(9 * 1024 * 1024), { overwrite: true });
+    expect(entry.path).toBe("/big.bin");
+    expect(requests).toHaveLength(4);
+    expect(requests[0]!.url.endsWith("/api/uploads/init")).toBe(true);
+    expect(JSON.parse(requests[0]!.body as string)).toMatchObject({ filename: "big.bin", overwrite: true });
   });
 
   it("mkdir splits parent and name; move/rename/remove hit the right routes", async () => {

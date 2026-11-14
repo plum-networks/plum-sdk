@@ -80,11 +80,12 @@ export class DriveApi {
     const name = basename(path);
     if (!name) throw new Error("upload path must include a filename");
 
-    if (buf.byteLength > CHUNKED_THRESHOLD && !opts.overwrite) {
+    // Large files go chunked, overwrite or not: the chunked protocol has
+    // carried `overwrite` since box core 1.7.7, and one multi-hundred-MB
+    // POST is what a flaky phone connection loses.
+    if (buf.byteLength > CHUNKED_THRESHOLD) {
       return this.uploadChunked(dir, name, buf, opts);
     }
-    // NOTE: overwrite semantics only exist on the single-shot endpoint today,
-    // so overwrite uploads always take this path regardless of size.
     const fields: Record<string, string> = { path: dir };
     if (opts.overwrite) fields.overwrite = "1";
     const { body, contentType } = buildMultipart(fields, {
@@ -123,6 +124,7 @@ export class DriveApi {
         filename: name,
         size: buf.byteLength,
         contentType: opts.contentType ?? "application/octet-stream",
+        ...(opts.overwrite ? { overwrite: true } : {}),
       },
     });
     const { uploadId } = responseJSON<{ uploadId: string; chunkSize?: number }>(initRes);

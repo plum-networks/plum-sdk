@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The library talks to the user's box over HTTPS. It declares no Activity:
+  the app registers its own redirect Activity (see android/README.md), since
+  the redirect URI is the app's, registered in the Plum developer console.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+</manifest>

@@ -6,3 +6,7 @@ dist/
 # Scratch: agent worktrees and anything a smoke test scaffolds here.
 .claude/
 hello/
+
+# SwiftPM / Xcode build output of the root Package.swift (swift/).
+/.build/
+/.swiftpm/
