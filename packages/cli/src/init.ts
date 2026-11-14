@@ -1,7 +1,9 @@
 // `plum-dev init <name> --template panel|server-go`: a runnable starting
-// point that already passes `plum-dev validate`.
+// point. The panel template passes `plum-dev validate` as written; the
+// server-go one does once its service is built (`plum-dev push` builds it).
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { placeholderIcon } from './icon.js';
 
 export type Template = 'panel' | 'server-go';
 
@@ -28,7 +30,7 @@ function indexHtml(name: string, withService: boolean): string {
       const me = await plum.user.current();
       document.getElementById('who').textContent = 'Hello, ' + (me.username || me.name || 'there') + '!';
 ${withService ? `      const r = await plum.service.fetch('/whoami');
-      document.getElementById('out').textContent = JSON.stringify(await r.json(), null, 2);` : `      document.getElementById('out').textContent = JSON.stringify(plum.app.host(), null, 2);`}
+      document.getElementById('out').textContent = JSON.stringify(await r.json(), null, 2);` : `      document.getElementById('out').textContent = JSON.stringify(await plum.app.host(), null, 2);`}
     })().catch((e) => { document.getElementById('out').textContent = String(e); });
   </script>
 </body>
@@ -43,26 +45,45 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net"
 	"net/http"
 	"os"
 )
 
+// devListener is set only by dev.go (go run -tags dev .) for a laptop; the box
+// build never has it.
+var devListener func() (net.Listener, error)
+
 func main() {
 	log.SetFlags(0) // core timestamps every line for you
 
-	sock := os.Getenv("PLUM_APP_SOCKET")
-	if sock == "" {
-		log.Fatal("PLUM_APP_SOCKET not set: this binary is started by the Plum supervisor")
-	}
-	_ = os.Remove(sock)
-	ln, err := net.Listen("unix", sock)
+	ln, err := listen()
 	if err != nil {
-		log.Fatalf("listen %s: %v", sock, err)
+		log.Fatal(err)
 	}
 	defer ln.Close()
 
+	log.Printf("listening on %s", ln.Addr())
+	if err := (&http.Server{Handler: routes()}).Serve(ln); err != nil {
+		log.Fatalf("serve: %v", err)
+	}
+}
+
+func listen() (net.Listener, error) {
+	sock := os.Getenv("PLUM_APP_SOCKET")
+	if sock == "" {
+		if devListener != nil {
+			return devListener()
+		}
+		return nil, errors.New("PLUM_APP_SOCKET not set: on the box, core starts this binary; on a laptop run \`go run -tags dev .\` in server/")
+	}
+	_ = os.Remove(sock)
+	return net.Listen("unix", sock)
+}
+
+func routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/whoami", func(w http.ResponseWriter, r *http.Request) {
@@ -76,19 +97,32 @@ func main() {
 			"version":  os.Getenv("PLUM_APP_VERSION"),
 		})
 	})
-
-	log.Printf("listening on %s", sock)
-	if err := (&http.Server{Handler: mux}).Serve(ln); err != nil {
-		log.Fatalf("serve: %v", err)
-	}
+	return mux
 }
 `;
 
 const SERVER_DEV_GO = `//go:build dev
 
-// \`go run -tags dev ./server\` serves the same handlers on TCP so
-// \`plum-dev serve --service http://127.0.0.1:8080\` can reach them on a laptop.
+// Laptop only. \`go run -tags dev .\` (in server/) serves the same handlers on
+// http://127.0.0.1:8787 (or $PORT), and \`plum-dev serve --service
+// http://127.0.0.1:8787\` puts them behind the panel with dev X-Plum-* headers.
+// The box build (plum-dev build, build.sh) never passes -tags dev.
 package main
+
+import (
+	"net"
+	"os"
+)
+
+func init() {
+	devListener = func() (net.Listener, error) {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8787"
+		}
+		return net.Listen("tcp", "127.0.0.1:"+port)
+	}
+}
 `;
 
 const BUILD_SH = `#!/usr/bin/env bash
@@ -110,7 +144,8 @@ export function scaffold(dir: string, name: string, id: string, template: Templa
     writeFileSync(full, content, { mode });
     written.push(rel);
   };
-  const manifest: Record<string, unknown> = { id, name, version: '0.1.0', entry: 'index.html', description: `${name} for Plum Box`, mobile: true };
+  // icon.png is a placeholder: Plum Store needs an icon for an app's first upload.
+  const manifest: Record<string, unknown> = { id, name, version: '0.1.0', entry: 'index.html', icon: 'icon.png', description: `${name} for Plum Box`, mobile: true };
   // Both templates greet the user (plum.user.current) — that needs user:profile.
   if (template === 'server-go') {
     manifest.permissions = ['user:profile', 'service:call'];
@@ -120,8 +155,20 @@ export function scaffold(dir: string, name: string, id: string, template: Templa
   }
   put('manifest.json', JSON.stringify(manifest, null, 2) + '\n');
   put('index.html', indexHtml(name, template === 'server-go'));
+  writeFileSync(join(dir, 'icon.png'), placeholderIcon());
+  written.push('icon.png');
   put('.plumignore', 'README.md\nserver/\nbuild.sh\n');
-  put('README.md', `# ${name}\n\n- \`plum-dev serve\` runs the panel on your laptop with the mock SDK.\n${template === 'server-go' ? '- `plum-dev build` cross-compiles the service for the box (arm64); `./build.sh` does the same by hand.\n' : ''}- \`plum-dev push\` signs and installs it on your paired box.\n`);
+  put(
+    'README.md',
+    `# ${name}\n\n` +
+      (template === 'server-go'
+        ? '- `cd server && go run -tags dev .` runs the service on http://127.0.0.1:8787.\n' +
+          '- `plum-dev serve --service http://127.0.0.1:8787` runs the panel on your laptop with the mock SDK, calling that service.\n' +
+          '- `plum-dev build` cross-compiles the service for the box (arm64); `./build.sh` does the same by hand.\n'
+        : '- `plum-dev serve` runs the panel on your laptop with the mock SDK.\n') +
+      '- `plum-dev push` signs and installs it on your paired box.\n' +
+      '- `icon.png` is a placeholder; replace it (a square PNG, 256–2048 px) before `plum-dev publish`.\n',
+  );
   if (template === 'server-go') {
     put('server/go.mod', `module ${id.replace(/[^a-z0-9.\-]/g, '-')}/server\n\ngo 1.22\n`);
     put('server/main.go', SERVER_MAIN_GO);

@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { b64url, formatPublicKey, kid, parsePublicKey, PURPOSE_PUBLISHER, signPayload, verifyPayload, type PublisherKey, type Rotation } from './keys.js';
+import { iconProblem } from './icon.js';
 import { checkElf, MAX_BUNDLE_FILES, MAX_ENTRY_BYTES, MAX_PLU_BYTES, validateManifest, type Manifest, type Problem } from './manifest.js';
 import { readZip, writeZip, type ZipEntry } from './zip.js';
 
@@ -65,12 +66,27 @@ export function checkBundle(entries: ZipEntry[], allowHostArch = false): { manif
   const { manifest, problems: mp } = validateManifest(manifestEntry.data, (rel) => names.has(rel));
   problems.push(...mp);
   if (manifest) problems.push(...checkSdkUsage(manifest, files));
+  if (manifest) problems.push(...checkIcon(manifest, files));
   if (manifest?.server?.bin && names.has(manifest.server.bin)) {
     const bin = files.find((e) => e.name === manifest.server!.bin)!;
     const p = checkElf(bin.data, allowHostArch);
     if (p) problems.push(p);
   }
   return { manifest, problems };
+}
+
+/**
+ * The box shows any icon, but Plum Store refuses an app's first upload without
+ * a PNG it accepts — say so here, long before a publish fails.
+ */
+function checkIcon(manifest: Manifest, files: ZipEntry[]): Problem[] {
+  if (!manifest.icon) {
+    return [{ level: 'warning', message: 'no icon: Plum Store refuses a new app without one — add "icon": "icon.png" to manifest.json (a square PNG, 256–2048 px), or pass plum-dev publish --icon <png>' }];
+  }
+  const f = files.find((e) => e.name === manifest.icon);
+  if (!f) return []; // validateManifest already reported it
+  const why = iconProblem(f.data);
+  return why ? [{ level: 'warning', message: `icon "${manifest.icon}": ${why} — Plum Store will refuse it` }] : [];
 }
 
 /** Produces a signed .plu from entries (any existing META/* is dropped). */

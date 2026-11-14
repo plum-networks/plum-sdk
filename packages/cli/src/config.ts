@@ -22,6 +22,10 @@ export interface Credentials {
   // developer console (developer.plum.im › CLI tokens), never the box token.
   store?: string;
   publisher_token?: string;
+  // The app-id namespaces the publisher owns in Plum Store (e.g. ["dev.jan"]),
+  // read when the publisher token is saved. `init` and `pair` default to the
+  // first one, so the app id, the box pairing and the store all agree.
+  store_namespaces?: string[];
   // The local emulator (plum-dev emulator login): kept beside the real box so
   // `push --target emulator` never clobbers the pairing.
   emulator?: { box: string; token: string; logged_in_at?: string };
@@ -120,7 +124,8 @@ export function requireCredentials(target?: string, env?: string): Credentials {
       throw new Error('no emulator session — run: plum-dev emulator up && plum-dev emulator login   (or plum-dev emulator login --token <plum_pat_…>)');
     }
     checkBoxEnv(c.emulator.box, e);
-    return { ...c, box: c.emulator.box, token: c.emulator.token };
+    // The emulator trusts any key for any id: the pairing's namespace does not apply.
+    return { ...c, box: c.emulator.box, token: c.emulator.token, kid: undefined, namespace: undefined };
   }
   if (t !== 'box') throw new Error(`--target must be "box" or "emulator", not "${target}"`);
   if (!c || !c.box || !c.token) {

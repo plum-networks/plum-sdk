@@ -1,6 +1,6 @@
 {
   "name": "@plumbox/dev",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Developer CLI for Plum Box apps: create a publisher key, pair your own box, package and sign a .plu, push it, follow its logs, and run a panel locally.",
   "license": "MIT",
   "keywords": [

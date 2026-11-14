@@ -10,7 +10,8 @@ services:
     image: ghcr.io/plum-networks/plum-box-dev:latest
     container_name: plum-box-dev
     ports:
-      - "8080:8080"
+      # Loopback only: the seeded owner below must not be reachable from the LAN.
+      - "127.0.0.1:8080:8080"
     volumes:
       - plum-data:/data/plum
       - plum-storage:/mnt/storage
