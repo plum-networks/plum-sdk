@@ -71,6 +71,10 @@ beforeAll(async () => {
     if (u.pathname === '/api/apps/dev.tester.hello/uninstall') return json(200, { ok: true });
     json(404, { error: 'not_found' });
   });
+  // fetch keeps the connection open between commands; a Go build in between can
+  // outlast Node's 5 s idle timeout, and on CI the next request then lands on a
+  // socket the server is closing (ECONNRESET). A real box does not drop it that fast.
+  server.keepAliveTimeout = 300_000;
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   box = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
@@ -224,6 +228,7 @@ describe('first app: namespace, icon and errors line up', () => {
       }
       json(404, { detail: 'Not Found' });
     });
+    storeSrv.keepAliveTimeout = 300_000;
     await new Promise<void>((r) => storeSrv.listen(0, '127.0.0.1', r));
     storeUrl = `http://127.0.0.1:${(storeSrv.address() as { port: number }).port}`;
     await run('login', '--publisher-token', 'plum_pub_ok', '--store', storeUrl);
