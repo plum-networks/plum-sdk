@@ -1,0 +1,10 @@
+# Gradle / Android Studio output and per-machine files for the Android SDK.
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/

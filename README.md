@@ -13,6 +13,25 @@ one. Four npm packages, one JSON Schema, one on-box JavaScript runtime.
 
 Node **18 or newer** everywhere.
 
+### Native apps (not yet released)
+
+The same client as `@plumbox/client` — delegated OAuth (PKCE), the hourly access
+token renewed by itself with a rotating refresh token, and the Drive — for apps
+that aren't JavaScript. Same names, same checks, same behaviour on every
+platform, so you never have to implement the token refresh yourself.
+
+| SDK | Directory | Install | Platform glue |
+|---|---|---|---|
+| `PlumBoxClient` (Swift) | [`swift/`](swift) | SwiftPM: this repository, product `PlumBoxClient` | `ASWebAuthenticationSession`, Keychain store — iOS 15 / macOS 12 |
+| `im.plum:plumbox-client` (Kotlin) | [`android/`](android) | Gradle | Custom Tabs, Android Keystore store — minSdk 24 |
+| `plumbox-client` (Rust) | [`rust/`](rust) | Cargo (git) | none: for apps whose shared core is Rust (shells open the browser) |
+
+**If you call the box's HTTP API directly instead**, you must keep the refresh
+token, renew the access token before it expires (it lasts an hour), save every
+new refresh token at once (each refresh replaces it), and send the user back
+through sign-in on `invalid_grant`. The SDKs do all of that; see
+[Token lifetime and refresh](packages/client/README.md#token-lifetime-and-refresh).
+
 `packages/oprf` (`@plumbox/oprf`) is **deprecated** and no longer released: OPRF
 box discovery ends with Plum Box v3. An app finds the user's box through
 delegated OAuth in `@plumbox/client` — the callback names the box.

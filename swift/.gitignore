@@ -1,0 +1,7 @@
+# Build output when building from inside swift/ (the manifest is at the repo
+# root; its own .build/ and .swiftpm/ are ignored there).
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
