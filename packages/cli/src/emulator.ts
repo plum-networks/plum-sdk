@@ -94,9 +94,11 @@ export function dockerAvailable(): boolean {
 }
 
 /**
- * Which mode a command runs in. `up` decides by probing; the others follow the
- * mode `up` recorded, so stopping an emulator never depends on the daemon
- * coming back.
+ * Which mode a command runs in. `up` is native unless --docker (or
+ * PLUM_DEV_EMULATOR_MODE=docker) asks for the image — Docker Desktop merely
+ * running is no reason to pick it, and the image is not on a public registry
+ * yet. The other subcommands follow the mode `up` recorded, so stopping an
+ * emulator never depends on the daemon coming back.
  */
 export function chooseMode(flags: { docker?: boolean; native?: boolean }, forStart: boolean): Mode {
   if (flags.docker && flags.native) throw new Error('--docker and --native contradict each other');
@@ -108,7 +110,7 @@ export function chooseMode(flags: { docker?: boolean; native?: boolean }, forSta
     const s = readState();
     if (s) return s.mode;
   }
-  return dockerAvailable() ? 'docker' : 'native';
+  return 'native';
 }
 
 // -------------------------------------------------------------- host target
@@ -122,7 +124,7 @@ export function hostTarget(): { goos: string; goarch: string } | null {
 
 export function unsupportedPlatform(): string {
   return `no prebuilt emulator core for ${process.platform}/${process.arch} — published platforms are ${EMULATOR_RELEASE.platforms.join(', ')}.\n` +
-    'Use Docker mode instead: plum-dev emulator up --docker   (or run a plum-server binary yourself: see the emulator docs)';
+    'On Windows, run plum-dev inside WSL 2 (Linux has a prebuilt core).';
 }
 
 // ------------------------------------------------------------------ release
@@ -270,7 +272,7 @@ export async function ensureBinary(o: { version?: string; apiBase?: string; log?
 
   const url = rel.assets[name];
   if (!url) {
-    throw new Error(`release ${rel.tag} carries no ${name} (it has: ${Object.keys(rel.assets).join(', ') || 'nothing'}) — this platform has no prebuilt core there.\nUse Docker mode instead: plum-dev emulator up --docker`);
+    throw new Error(`release ${rel.tag} carries no ${name} (it has: ${Object.keys(rel.assets).join(', ') || 'nothing'}) — this platform has no prebuilt core there.\nOn Windows, run plum-dev inside WSL 2 (Linux has a prebuilt core).`);
   }
   const sumsUrl = rel.assets[EMULATOR_RELEASE.checksums];
   if (!sumsUrl) throw new Error(`release ${rel.tag} has no ${EMULATOR_RELEASE.checksums}; refusing to run a binary nothing vouches for`);
@@ -391,6 +393,10 @@ export async function startNative(o: { binary: string; version: string; port: nu
     env: {
       ...process.env,
       PLUMBOX_EMULATOR: '1',
+      // Loopback only: the seeded owner (dev / plumbox-dev) and its token must
+      // not be reachable from the rest of the network. Older emulator cores ignore
+      // it and listen on every interface.
+      PLUMBOX_LISTEN_HOST: '127.0.0.1',
       PLUMBOX_DEV_OWNER_EMAIL: process.env.PLUMBOX_DEV_OWNER_EMAIL || 'dev@plum.local',
       PLUMBOX_DEV_OWNER_USER: process.env.PLUMBOX_DEV_OWNER_USER || 'dev',
       PLUMBOX_DEV_OWNER_PASSWORD: process.env.PLUMBOX_DEV_OWNER_PASSWORD || 'plumbox-dev',

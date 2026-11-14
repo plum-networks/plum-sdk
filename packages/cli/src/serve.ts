@@ -14,6 +14,9 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.map': 'application/json',
 };
 
+/** Who the mock SDK says is signed in (src/plum-sdk-mock.js, user.current). */
+export const MOCK_USER = { id: 'mock-user', username: 'devuser' } as const;
+
 export interface ServeOptions {
   dir: string;
   appId: string;
@@ -34,7 +37,8 @@ function mockSdkPath(): string {
 export function startServe(o: ServeOptions): Promise<{ url: string; close: () => void }> {
   const root = resolve(o.dir);
   const prefix = `/apps/${o.appId}/`;
-  const prelude = `<script>window.__PLUM_APP__=${JSON.stringify({ id: o.appId, perms: o.perms, version: 'dev', token: 'dev' })};</script>`;
+  // `service` tells the mock SDK that /apps/<id>/svc/* reaches a real service here.
+  const prelude = `<script>window.__PLUM_APP__=${JSON.stringify({ id: o.appId, perms: o.perms, version: 'dev', token: 'dev', service: !!o.service })};</script>`;
   const server = createServer((req, res) => {
     const url = new URL(req.url || '/', 'http://localhost');
     if (url.pathname === '/' || url.pathname === '/apps' || url.pathname === '/apps/') {
@@ -86,8 +90,11 @@ function proxy(req: IncomingMessage, res: ServerResponse, o: ServeOptions, rest:
   for (const [k, v] of Object.entries(req.headers)) {
     if (typeof v === 'string' && !k.toLowerCase().startsWith('x-plum-') && k.toLowerCase() !== 'cookie') headers[k] = v;
   }
+  // The same identity the mock SDK's plum.user.current() reports, and the headers
+  // core always sets (X-Plum-Entitlements is present even when empty).
   Object.assign(headers, {
-    'X-Plum-User-Id': 'dev-user', 'X-Plum-Username': 'dev', 'X-Plum-App-Id': o.appId, 'X-Plum-Perms': JSON.stringify(o.perms),
+    'X-Plum-User-Id': MOCK_USER.id, 'X-Plum-Username': MOCK_USER.username, 'X-Plum-App-Id': o.appId, 'X-Plum-Perms': JSON.stringify(o.perms),
+    'X-Plum-Entitlements': '',
     host: target.host,
   });
   const up = httpRequest({ host: target.hostname, port: target.port || 80, method: req.method, path: rest || '/', headers }, (r2) => {

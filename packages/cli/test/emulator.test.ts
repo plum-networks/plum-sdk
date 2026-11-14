@@ -90,10 +90,10 @@ describe('release resolution', () => {
     expect(m['plum-server-darwin-arm64']).toBe('2'.repeat(64));
   });
 
-  it('names the platform and Docker when there is no asset for it', () => {
+  it('names the platforms, and WSL for Windows, when there is no asset for it', () => {
     const msg = unsupportedPlatform();
     for (const p of EMULATOR_RELEASE.platforms) expect(msg).toContain(p);
-    expect(msg).toContain('--docker');
+    expect(msg).toContain('WSL'); // the image is not public, so it no longer points at --docker
   });
 });
 
@@ -129,6 +129,16 @@ describe('the cached core binary', () => {
 });
 
 describe('mode selection', () => {
+  it('up is native unless Docker is asked for — a running Docker Desktop is no reason to pick it', () => {
+    const before = process.env.PLUM_DEV_EMULATOR_MODE;
+    delete process.env.PLUM_DEV_EMULATOR_MODE;
+    try {
+      expect(chooseMode({}, true)).toBe('native');
+    } finally {
+      if (before !== undefined) process.env.PLUM_DEV_EMULATOR_MODE = before;
+    }
+  });
+
   it('--docker and --native cannot both be given', () => {
     expect(() => chooseMode({ docker: true, native: true }, true)).toThrow(/contradict/);
   });

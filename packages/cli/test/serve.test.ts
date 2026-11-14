@@ -17,6 +17,7 @@ describe('serve', () => {
       seen.user = req.headers['x-plum-user-id'] as string;
       seen.app = req.headers['x-plum-app-id'] as string;
       seen.perms = req.headers['x-plum-perms'] as string;
+      seen.ent = req.headers['x-plum-entitlements'] as string | undefined;
       res.setHeader('Content-Type', 'application/json');
       res.end('{"ok":true}');
     });
@@ -28,6 +29,7 @@ describe('serve', () => {
       const html = await (await fetch(url)).text();
       expect(html).toContain('window.__PLUM_APP__=');
       expect(html).toContain('"id":"dev.t.app"');
+      expect(html).toContain('"service":true'); // the mock SDK calls the real service only when this is set
       const sdk = await fetch(new URL('/apps/runtime/plum-sdk.js', url));
       expect(sdk.status).toBe(200);
       expect((await sdk.text())).toContain('plum');
@@ -38,7 +40,8 @@ describe('serve', () => {
       const r = await fetch(url + 'svc/whoami?x=1', { method: 'POST', body: 'b' });
       expect(await r.json()).toEqual({ ok: true });
       expect(seen.path).toBe('/whoami?x=1');
-      expect(seen.user).toBe('dev-user');
+      expect(seen.user).toBe('mock-user'); // the same user the mock's plum.user.current() reports
+      expect(seen.ent).toBe(''); // core always sets it, empty when there are none
       expect(seen.app).toBe('dev.t.app');
       expect(seen.perms).toBe('["service:call"]');
     } finally {

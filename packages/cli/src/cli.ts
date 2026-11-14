@@ -15,7 +15,7 @@
 //   status|restart|uninstall <app-id>
 //   serve [dir] [--port 4040] [--service http://127.0.0.1:8080]
 //   rotate --app-id <id> (--old <key> | --recovery <key> --old-pub <ed25519:…>) [-o rotation.json]
-//   publish [dir|.plu] [--store URL] [--token plum_pub_…] [--channel beta]   upload to Plum Store
+//   publish [dir|.plu] [--store URL] [--token plum_pub_…] [--channel beta] [--icon png]   upload to Plum Store
 //   testers <app-id> [list|add <serial>|rm <serial>]      who gets the beta channel
 //   escrow (seal [-o file] | open <file>)                  passphrase-encrypted key backup for the console
 //   whoami
@@ -27,8 +27,9 @@ import { createInterface } from 'node:readline';
 import * as api from './api.js';
 import { build as buildApp, BUILD_KINDS, type BuildKind } from './build.js';
 import { checkBundle, collectFiles, inspectPlu, resignPlu, signBundle, verifyPlu, type SignOptions } from './bundle.js';
-import { checkBoxEnv, configDir, EMULATOR_BOX, keyPath, loadCredentials, plumEnv, requireCredentials, saveCredentials, storeCredentials } from './config.js';
+import { checkBoxEnv, configDir, EMULATOR_BOX, keyPath, loadCredentials, plumEnv, requireCredentials, saveCredentials, storeCredentials, type Credentials } from './config.js';
 import * as emu from './emulator.js';
+import { iconProblem, isPlaceholderIcon } from './icon.js';
 import { scaffold, type Template } from './init.js';
 import { openEscrow, sealEscrow } from './escrow.js';
 import { formatPublicKey, generateKey, kid, loadKey, makeRotation, parsePublicKey, saveKey, type Rotation } from './keys.js';
@@ -36,7 +37,7 @@ import type { Manifest, Problem } from './manifest.js';
 import { startServe } from './serve.js';
 import { readZip, type ZipEntry } from './zip.js';
 
-const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 const BOOLEAN_FLAGS = new Set([
   'force', 'follow', 'f', 'logs', 'watch', 'json', 'allow-host-arch', 'insecure', 'help', 'h', 'version', 'v',
   'print-recovery', 'recovery-key', 'native', 'docker', 'no-docker', 'build', 'no-build', 'pull', 'volumes',
@@ -92,6 +93,63 @@ function normalizeBox(u: string): string {
   let s = u.trim();
   if (!/^https?:\/\//.test(s)) s = 'https://' + s;
   return s.replace(/\/+$/, '');
+}
+
+// ---- namespaces ----
+//
+// One app id has to satisfy three parties: the box trusts a paired key only for
+// ids under the namespace it was paired with, Plum Store accepts only ids under
+// a namespace the publisher owns (dev.<handle>, or a verified domain), and
+// `init` writes the id. They default to the same place — the store namespace,
+// read once at `login --publisher-token` — and push/publish check the id
+// against it before anything is uploaded.
+
+/** "dev.jan" / "dev.jan." → "dev.jan." */
+export function asPrefix(ns: string): string {
+  const t = ns.trim().replace(/\.+$/, '');
+  return t ? t + '.' : '';
+}
+
+export function underNamespace(appId: string, ns: string): boolean {
+  const p = asPrefix(ns);
+  return !!p && (appId === p.slice(0, -1) || appId.startsWith(p));
+}
+
+function guessedNamespace(): string {
+  return `dev.${userInfo().username.toLowerCase().replace(/[^a-z0-9]/g, '')}.`;
+}
+
+/** The namespace this developer is known to own: Plum Store's, else the box pairing's. */
+function knownNamespace(c: Credentials | null = loadCredentials()): { ns: string; source: 'store' | 'pairing' } | null {
+  if (c?.store_namespaces?.length) return { ns: asPrefix(c.store_namespaces[0]!), source: 'store' };
+  if (c?.namespace) return { ns: asPrefix(c.namespace), source: 'pairing' };
+  return null;
+}
+
+/** The namespace part of the app id in <dir>/manifest.json ("dev.jan.notes" → "dev.jan."). */
+function manifestNamespace(dir: string): string | undefined {
+  try {
+    const id = (JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as Manifest).id;
+    const i = typeof id === 'string' ? id.lastIndexOf('.') : -1;
+    return i > 0 ? id.slice(0, i + 1) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const NAMESPACE_HELP =
+  'Your namespace is on developer.plum.im/namespaces (dev.<your handle>); `plum-dev login --publisher-token <plum_pub_…>` saves it so init and pair use it.';
+
+/** Reads the publisher's namespaces from the store and remembers them; null when that is not possible. */
+async function refreshStoreNamespaces(store: string, token: string): Promise<string[] | null> {
+  try {
+    const ns = await api.storeNamespaces(store, token);
+    const prev = loadCredentials() ?? { box: '', token: '' };
+    saveCredentials({ ...prev, store_namespaces: ns });
+    return ns;
+  } catch {
+    return null;
+  }
 }
 
 function loadIgnore(dir: string): string[] {
@@ -158,14 +216,23 @@ async function cmdPair(a: Args) {
   if (a.flags.insecure) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   const key = loadKey(keyPath());
   const name = str(a.flags, 'name', userInfo().username)!;
-  const namespace = str(a.flags, 'namespace', `dev.${userInfo().username.toLowerCase().replace(/[^a-z0-9]/g, '')}.`)!;
+  // Pair for the namespace your apps live under: the store's, else the app in
+  // this directory, else a guess from the user name (said out loud).
+  const prev = loadCredentials();
+  const store = prev?.store_namespaces?.length ? asPrefix(prev.store_namespaces[0]!) : undefined;
+  const flagNs = str(a.flags, 'namespace');
+  const namespace = asPrefix(flagNs ?? store ?? manifestNamespace(process.cwd()) ?? prev?.namespace ?? guessedNamespace());
+  if (!flagNs && !store && !manifestNamespace(process.cwd()) && !prev?.namespace) {
+    console.log(`! pairing for ${namespace}, a guess from your user name. ${NAMESPACE_HELP}`);
+  }
   const begin = await api.pairBegin(box, formatPublicKey(key.pub), name, namespace);
   console.log(`pairing request sent to ${box} (kid ${begin.kid}, namespace ${namespace}, expires in ${Math.round(begin.expires_in / 60)} min)`);
   console.log(begin.hint);
   const code = str(a.flags, 'code') ?? (await ask('6-digit code shown on the box: '));
   const done = await api.pairConfirm(box, begin.pairing_id, code);
   if (!done.token) throw new Error('the box confirmed the key but issued no developer token; upgrade the box or use `plum-dev login --token`');
-  saveCredentials({ box, token: done.token, kid: done.kid, namespace: done.namespace_prefix, paired_at: new Date().toISOString() });
+  // Keep the publisher token, its namespaces and the emulator session: pairing replaces only the box.
+  saveCredentials({ ...(loadCredentials() ?? {}), box, token: done.token, kid: done.kid, namespace: done.namespace_prefix, paired_at: new Date().toISOString() });
   console.log(`paired: ${box} trusts ${done.kid} for apps under "${done.namespace_prefix}" (box trust level ${done.trust_level})`);
   console.log(`credentials saved to ${join(configDir(), 'credentials.json')}`);
 }
@@ -177,6 +244,11 @@ async function cmdLogin(a: Args) {
     const prev = loadCredentials() ?? { box: '', token: '' };
     saveCredentials({ ...prev, publisher_token: pubTok, store: (str(a.flags, 'store') || prev.store || '').replace(/\/+$/, '') || undefined });
     console.log(`publisher token saved to ${join(configDir(), 'credentials.json')}`);
+    const { store } = storeCredentials({ store: str(a.flags, 'store'), token: pubTok });
+    const ns = await refreshStoreNamespaces(store, pubTok);
+    if (ns === null) console.log(`! could not read your namespace from ${store} (the token is saved; plum-dev whoami tries again)`);
+    else if (!ns.length) console.log('! you have no namespace yet — open developer.plum.im once (it assigns dev.<your handle>), then run plum-dev whoami');
+    else console.log(`namespace  ${ns.join(', ')}   — new apps get ids like ${asPrefix(ns[0]!)}my-app (plum-dev init uses it)`);
     return;
   }
   const box = str(a.flags, 'box');
@@ -193,7 +265,31 @@ async function cmdPublish(a: Args) {
   if (channel !== 'public' && channel !== 'beta') throw new UsageError('publish --channel public|beta');
   const { store, token } = storeCredentials({ store: str(a.flags, 'store'), token: str(a.flags, 'token') });
   const { plu, manifest } = buildSigned(target, a.flags);
-  const r = await api.publish(store, token, plu, `${manifest.id}-${manifest.version}.plu`, channel);
+
+  // The id has to be under a namespace you own; say so before uploading 50 MB.
+  let owned = loadCredentials()?.store_namespaces;
+  if (!owned?.some((ns) => underNamespace(manifest.id, ns))) owned = (await refreshStoreNamespaces(store, token)) ?? undefined;
+  if (owned && !owned.some((ns) => underNamespace(manifest.id, ns))) {
+    throw new Error(
+      `"${manifest.id}" is not under a namespace you own in Plum Store (${owned.length ? owned.join(', ') : 'none yet'}).\n` +
+        `  Change "id" in manifest.json to ${owned.length ? asPrefix(owned[0]!) : 'dev.<your handle>.'}<name>. ${owned.length ? '' : NAMESPACE_HELP}`,
+    );
+  }
+
+  // The store needs an icon for an app's first upload: --icon, else manifest.icon in the bundle.
+  let icon: Buffer | undefined;
+  const iconFlag = str(a.flags, 'icon');
+  if (iconFlag) {
+    icon = readFileSync(iconFlag);
+    const why = iconProblem(icon);
+    if (why) throw new Error(`--icon ${iconFlag}: ${why}`);
+  }
+  const bundled = manifest.icon ? readZip(plu).find((e) => e.name === manifest.icon)?.data : undefined;
+  if (channel === 'public' && ((icon && isPlaceholderIcon(icon)) || (!icon && bundled && isPlaceholderIcon(bundled)))) {
+    console.log('! the icon is still the placeholder from plum-dev init — put your own icon.png in before review; reviewers turn the placeholder down');
+  }
+
+  const r = await api.publish(store, token, plu, `${manifest.id}-${manifest.version}.plu`, channel, icon);
   console.log(`uploaded ${r.app_id} ${r.version} to ${store} (${channel}): ${r.status}${r.created_app ? ' (new app)' : ''}${r.rotated ? ', key rotation accepted' : ''}`);
   if (channel === 'beta') console.log(`signed by ${r.publisher_kid ?? '?'}; live now for your beta boxes (plum-dev testers ${r.app_id})`);
   else console.log(`signed by ${r.publisher_kid ?? '?'}; store countersign ${r.countersign_kind ?? 'none'} — a reviewer publishes it, you get mail either way`);
@@ -251,17 +347,29 @@ async function cmdEscrow(a: Args) {
 
 async function cmdInit(a: Args) {
   const name = a.pos[0];
-  if (!name) throw new UsageError('init <name> [--template panel|server-go] [--id <app id>] [--dir <path>]');
+  if (!name) throw new UsageError('init <name> [--template panel|server-go] [--namespace dev.you.] [--id <app id>] [--dir <path>]');
   const template = (str(a.flags, 'template', 'panel') as Template);
   if (template !== 'panel' && template !== 'server-go') throw new UsageError(`unknown template "${template}" (panel | server-go)`);
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  const ns = loadCredentials()?.namespace ?? `dev.${userInfo().username.toLowerCase().replace(/[^a-z0-9]/g, '')}.`;
+  const flagNs = str(a.flags, 'namespace');
+  const known = knownNamespace();
+  const ns = flagNs ? asPrefix(flagNs) : known?.ns ?? guessedNamespace();
   const id = str(a.flags, 'id', ns + slug)!;
   const dir = resolve(str(a.flags, 'dir', slug)!);
   const files = scaffold(dir, name, id, template);
   console.log(`created ${dir} (${id}, template ${template}):`);
   for (const f of files) console.log(`  ${f}`);
-  console.log(`\nnext: cd ${basename(dir)} && plum-dev serve${template === 'server-go' ? '   (and plum-dev build before plum-dev push)' : ''}`);
+  if (!str(a.flags, 'id') && !flagNs && !known) {
+    console.log(`\n! ${ns} is a guess from your computer's user name, and Plum Store will refuse it unless it is yours.`);
+    console.log(`  ${NAMESPACE_HELP}`);
+    console.log('  To fix this app, change "id" in manifest.json.');
+  }
+  console.log('\nicon.png is a placeholder — replace it (a square PNG, 256–2048 px) before you publish.');
+  if (template === 'server-go') {
+    console.log(`next: cd ${basename(dir)}/server && go run -tags dev .        (your service on http://127.0.0.1:8787)`);
+    console.log(`      cd ${basename(dir)} && plum-dev serve --service http://127.0.0.1:8787`);
+    console.log('      plum-dev push builds the arm64 service for the box itself');
+  } else console.log(`next: cd ${basename(dir)} && plum-dev serve`);
 }
 
 async function cmdValidate(a: Args) {
@@ -355,7 +463,14 @@ async function pushOnce(target: string, a: Args) {
   const c = requireCredentials(str(a.flags, 'target'), str(a.flags, 'env'));
   await buildForPush(target, a);
   const { plu, manifest } = buildSigned(target, a.flags);
-  const r = await api.install(c, plu, str(a.flags, 'app-id') ?? manifest.id);
+  const appId = str(a.flags, 'app-id') ?? manifest.id;
+  if (c.namespace && !underNamespace(appId, c.namespace)) {
+    throw new Error(
+      `"${appId}" is outside ${asPrefix(c.namespace)}, the namespace ${c.box} trusts this key for — the box would refuse it.\n` +
+        `  Change "id" in manifest.json to ${asPrefix(c.namespace)}<name>, or pair again: plum-dev pair ${c.box} --namespace <prefix>`,
+    );
+  }
+  const r = await api.install(c, plu, appId);
   console.log(`installed ${r.app_id} ${r.version} on ${c.box}  →  ${c.box}${r.url}${r.countersign_kind ? '' : '   (developer build: signed by ' + r.publisher_kid + ', no store countersign)'}`);
   return { c, manifest };
 }
@@ -456,11 +571,11 @@ async function cmdRotate(a: Args) {
 
 // ---- emulator (plum-box-dev): a Plum Box on this machine ----
 //
-// Two modes, one command. Docker runs the published image; native downloads
-// the prebuilt core for this platform and runs it as a child process. `up`
-// picks Docker only when a daemon answers, so a developer without Docker still
-// gets a real core to push to. The other subcommands follow the mode `up`
-// recorded, so nothing depends on the daemon coming back.
+// Two modes, one command. Native (the default) downloads the prebuilt core for
+// this platform and runs it as a child process on 127.0.0.1; Docker (--docker)
+// runs the plum-box-dev image, which is not on a public registry yet. The other
+// subcommands follow the mode `up` recorded, so nothing depends on the daemon
+// coming back.
 
 function emuMode(a: Args, forStart: boolean): emu.Mode {
   return emu.chooseMode({ docker: !!a.flags.docker, native: !!a.flags.native }, forStart);
@@ -468,7 +583,11 @@ function emuMode(a: Args, forStart: boolean): emu.Mode {
 
 async function emuUp(a: Args, container: string) {
   if (emuMode(a, true) === 'docker') {
-    emu.dockerCli(['compose', '-f', emu.composeFile(), 'up', '-d', ...(a.flags.pull ? ['--pull', 'always'] : [])]);
+    try {
+      emu.dockerCli(['compose', '-f', emu.composeFile(), 'up', '-d', ...(a.flags.pull ? ['--pull', 'always'] : [])]);
+    } catch (e) {
+      throw new Error(`${(e as Error).message}\n  The plum-box-dev image is not on a public registry yet — run the emulator without Docker: plum-dev emulator up`);
+    }
     emu.writeState({ mode: 'docker', version: 'image', port: emu.DEFAULT_PORT, box: EMULATOR_BOX, container });
     console.log(`plum-box-dev is starting — web UI ${EMULATOR_BOX} (dev / plumbox-dev). Next: plum-dev emulator login`);
     return;
@@ -565,16 +684,20 @@ async function cmdWhoami() {
   if (c) console.log(`box        ${c.box}${c.namespace ? '  namespace ' + c.namespace : ''}${c.paired_at ? '  paired ' + c.paired_at : ''}`);
   else console.log('box        (not paired; run plum-dev pair <box-url>)');
   if (c?.emulator) console.log(`emulator   ${c.emulator.box}  (plum-dev push --target emulator)`);
-  if (c?.publisher_token) console.log(`store      ${c.store || 'https://store.plum.im'}  token ${c.publisher_token.slice(0, 17)}…`);
-  else console.log('store      (no publisher token; plum-dev login --publisher-token <plum_pub_…>)');
+  if (c?.publisher_token) {
+    console.log(`store      ${c.store || 'https://store.plum.im'}  token ${c.publisher_token.slice(0, 17)}…`);
+    const { store, token } = storeCredentials({});
+    const ns = (await refreshStoreNamespaces(store, token)) ?? c.store_namespaces;
+    console.log(`namespace  ${ns?.length ? ns.join(', ') : ns ? '(none yet — open developer.plum.im once)' : '(unknown — the store did not answer)'}`);
+  } else console.log('store      (no publisher token; plum-dev login --publisher-token <plum_pub_…>)');
 }
 
 const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on your own box
 
   keygen [--force]                       create publisher + recovery keys
   pair <box-url> [--name N] [--namespace dev.me.] [--code 123456] [--insecure]
-  login --box <url> --token <plum_pat_…>
-  init <name> [--template panel|server-go] [--id <app id>]
+  login --box <url> --token <plum_pat_…>  |  login --publisher-token <plum_pub_…> [--store <url>]
+  init <name> [--template panel|server-go] [--namespace dev.you.] [--id <app id>]
   validate [dir|.plu] [--allow-host-arch]
   package [dir] [-o out.plu] [--rotation rotation.json] [--no-recovery]
   sign <in.plu> [-o out.plu]
@@ -587,7 +710,7 @@ const HELP = `plum-dev ${VERSION} — build, sign and install Plum Box apps on y
            | down [--volumes] | logs [-f] | token | login [--token …] | status
   serve [dir] [--port 4040] [--service http://127.0.0.1:8080]
   rotate --app-id <id> (--old <key> | --recovery <key> --old-pub <pub>) [-o rotation.json]
-  publish [dir|.plu] [--store <url>] [--token <plum_pub_…>] [--channel public|beta]
+  publish [dir|.plu] [--store <url>] [--token <plum_pub_…>] [--channel public|beta] [--icon icon.png]
   testers <app-id> [list | add <box-serial> [--note …] | rm <box-serial>]
   escrow seal [--recovery-key] [-o blob.txt] | escrow open <blob.txt> [-o key-file]
   whoami
@@ -613,10 +736,34 @@ export async function main(argv: string[]): Promise<void> {
   await fn(a);
 }
 
+/** What to do next for the errors a new developer actually meets. */
+export function errorHint(e: api.BoxError): string | undefined {
+  switch (e.code) {
+    case 'icon_required':
+    case 'bad_icon':
+      return 'add a square PNG icon (256–2048 px, at most 1 MiB): "icon": "icon.png" in manifest.json, or plum-dev publish --icon <png>';
+    case 'namespace_required':
+      return `the app id must be under a namespace you own — plum-dev whoami shows yours (developer.plum.im/namespaces)`;
+    case 'key_not_registered':
+      return 'register this key in the console first (developer.plum.im/keys); plum-dev whoami prints its public line';
+    case 'publisher_untrusted':
+      return 'the box trusts this key only for the namespace you paired with (plum-dev whoami) — change "id" in manifest.json, or pair again with --namespace';
+    case 'version_exists':
+    case 'version_not_increasing':
+      return 'raise "version" in manifest.json';
+  }
+  if (e.origin === 'store' && e.status === 401) return 'the publisher token was refused — make a new one at developer.plum.im/tokens, then plum-dev login --publisher-token <plum_pub_…>';
+  return undefined;
+}
+
 const isEntry = process.argv[1] && /(^|\/)(cli\.js|plum-dev)$/.test(process.argv[1]);
 if (isEntry) {
   main(process.argv.slice(2)).catch((e: unknown) => {
-    if (e instanceof api.BoxError) console.error(`plum-dev: box said ${e.status} ${e.code}: ${e.message}`);
+    if (e instanceof api.BoxError) {
+      console.error(`plum-dev: ${e.origin === 'store' ? 'Plum Store' : 'the box'} said ${e.status} ${e.code}: ${e.message}`);
+      const hint = errorHint(e);
+      if (hint) console.error(`  → ${hint}`);
+    }
     else if (e instanceof UsageError) console.error(`usage: plum-dev ${e.message}`);
     else console.error(`plum-dev: ${(e as Error).message}`);
     process.exit(1);

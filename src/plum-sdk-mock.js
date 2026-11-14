@@ -220,20 +220,27 @@
 
     events: { subscribe() { return function () {}; } },
 
-    // mock 에는 실제 server .plu 백엔드가 없다 — surface 만 제공. fetch 는 명확히
-    // 거부하니, 서버 .plu 를 개발할 땐 자기 서비스를 띄우거나 이 메서드를 스텁할 것.
+    // plum.service: under `plum-dev serve --service <url>` the page's /apps/<id>/svc/*
+    // is proxied to the developer's own service (with dev X-Plum-* headers), and
+    // the prelude says so (__PLUM_APP__.service). Without it there is no backend,
+    // and fetch says how to get one.
     service: {
       url(path) {
         let p = String(path == null ? '/' : path);
         if (p.charAt(0) !== '/') p = '/' + p;
-        return '/apps/mock/svc' + p;
+        const ctx = window.__PLUM_APP__ || {};
+        return '/apps/' + (ctx.id || 'mock') + '/svc' + p;
       },
-      async fetch(path) {
-        throw makeErr(
-          'mock_no_server',
-          'plum.service.fetch(' + JSON.stringify(path) +
-            '): mock 에는 server .plu 백엔드가 없습니다. 실제 서비스를 띄우거나 plum.service 를 스텁하세요.'
-        );
+      async fetch(path, init) {
+        const ctx = window.__PLUM_APP__ || {};
+        if (!ctx.service) {
+          throw makeErr(
+            'mock_no_server',
+            'plum.service.fetch(' + JSON.stringify(path) + '): no service behind the mock. Start yours ' +
+              '(in server/: go run -tags dev .) and run plum-dev serve --service http://127.0.0.1:8787'
+          );
+        }
+        return fetch(window.plum.service.url(path), Object.assign({ credentials: 'same-origin' }, init || {}));
       },
     },
   };
